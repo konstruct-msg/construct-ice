@@ -516,7 +516,7 @@ fn client_config_defaults() {
     let cert = config.bridge_cert();
     let client = ClientConfig::from_bridge_cert(&cert).unwrap();
 
-    assert_eq!(client.iat_mode, IatMode::None);
+    assert_eq!(client.iat_mode, IatMode::Enabled);
     assert_eq!(client.handshake_timeout, Duration::from_secs(30));
     assert!(matches!(client.padding, PaddingStrategy::None));
     assert_eq!(client.max_iat_delay, Duration::from_millis(10));
@@ -526,7 +526,7 @@ fn client_config_defaults() {
 fn server_config_defaults() {
     let config = ServerConfig::generate();
 
-    assert_eq!(config.iat_mode, IatMode::None);
+    assert_eq!(config.iat_mode, IatMode::Enabled);
     assert_eq!(config.handshake_timeout, Duration::from_secs(30));
     assert!(matches!(config.padding, PaddingStrategy::None));
     assert_eq!(config.max_iat_delay, Duration::from_millis(10));
@@ -555,6 +555,6 @@ fn server_config_serialization_roundtrip() {
 
     assert_eq!(config.bridge_cert(), restored.bridge_cert());
     // Runtime fields reset to defaults after deserialization
-    assert_eq!(restored.iat_mode, IatMode::None);
+    assert_eq!(restored.iat_mode, IatMode::Enabled);
     assert!(matches!(restored.padding, PaddingStrategy::None));
 }

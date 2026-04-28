@@ -104,13 +104,13 @@ pub struct ClientConfig {
 
 impl ClientConfig {
     /// Create config from a base64-encoded bridge cert (`nodeID || pubKey`, no padding).
-    /// Sets `iat_mode = IatMode::None`.
+    /// Sets `iat_mode = IatMode::Enabled` (MTU chunks + 0–10 ms jitter).
     pub fn from_bridge_cert(cert: &str) -> Result<Self> {
         let (server_pubkey, node_id) = StaticKeypair::parse_bridge_cert(cert)?;
         Ok(ClientConfig {
             server_pubkey,
             node_id,
-            iat_mode: IatMode::None,
+            iat_mode: IatMode::Enabled,
             handshake_timeout: DEFAULT_HANDSHAKE_TIMEOUT,
             padding: PaddingStrategy::default(),
             max_iat_delay: crate::iat::MAX_IAT_DELAY,
@@ -126,7 +126,7 @@ impl ClientConfig {
     /// Example: `"cert=AAECBAUGBwgJCgsMDQ4P... iat-mode=1"`
     pub fn from_bridge_line(line: &str) -> Result<Self> {
         let mut cert = None;
-        let mut iat_mode = IatMode::None;
+        let mut iat_mode = IatMode::Enabled;
         for token in line.split_whitespace() {
             if let Some(v) = token.strip_prefix("cert=") {
                 cert = Some(v);
@@ -155,7 +155,7 @@ impl ClientConfig {
         ClientConfig {
             server_pubkey,
             node_id,
-            iat_mode: IatMode::None,
+            iat_mode: IatMode::Enabled,
             handshake_timeout: DEFAULT_HANDSHAKE_TIMEOUT,
             padding: PaddingStrategy::default(),
             max_iat_delay: crate::iat::MAX_IAT_DELAY,
@@ -222,11 +222,11 @@ pub struct ServerConfig {
 }
 
 impl ServerConfig {
-    /// Generate a new random server identity keypair with `IatMode::None`.
+    /// Generate a new random server identity keypair with `IatMode::Enabled`.
     pub fn generate() -> Self {
         ServerConfig {
             keypair: StaticKeypair::generate(&mut rand::rngs::OsRng),
-            iat_mode: IatMode::None,
+            iat_mode: IatMode::Enabled,
             handshake_timeout: DEFAULT_HANDSHAKE_TIMEOUT,
             padding: PaddingStrategy::default(),
             max_iat_delay: crate::iat::MAX_IAT_DELAY,
@@ -238,7 +238,7 @@ impl ServerConfig {
     pub fn from_keypair(keypair: StaticKeypair) -> Self {
         ServerConfig {
             keypair,
-            iat_mode: IatMode::None,
+            iat_mode: IatMode::Enabled,
             handshake_timeout: DEFAULT_HANDSHAKE_TIMEOUT,
             padding: PaddingStrategy::default(),
             max_iat_delay: crate::iat::MAX_IAT_DELAY,
@@ -314,7 +314,7 @@ impl ServerConfig {
         node_id.copy_from_slice(&bytes[32..]);
         Ok(ServerConfig {
             keypair: StaticKeypair::from_secret(secret, node_id),
-            iat_mode: IatMode::None,
+            iat_mode: IatMode::Enabled,
             handshake_timeout: DEFAULT_HANDSHAKE_TIMEOUT,
             padding: PaddingStrategy::default(),
             max_iat_delay: crate::iat::MAX_IAT_DELAY,
