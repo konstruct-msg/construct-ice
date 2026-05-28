@@ -86,6 +86,11 @@ pub mod tls_fingerprint;
 #[cfg(feature = "metrics")]
 pub mod metrics;
 
+/// ICE Coordinator — FSM-based obfuscator selection with happy-eyeballs probing,
+/// per-network scoring, and persistent state.
+#[cfg(feature = "coordinator")]
+pub mod ice;
+
 mod error;
 
 pub use error::Error;

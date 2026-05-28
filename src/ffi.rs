@@ -928,3 +928,259 @@ async fn handle_connection_webtunnel(
         }
     }
 }
+
+// ── ICE Coordinator FFI (Phase 1) ───────────────────────────────────────────
+//
+// New FFI surface using the FSM-based coordinator.
+// Replaces the legacy `ice_proxy_start*` functions in Phase 3.
+//
+// ```c
+// int32_t ice_start(IceStartRequest req, IceStartResult *out);
+// void    ice_stop(void);
+// bool    ice_is_alive(void);
+// uint16_t ice_port(void);
+// ```
+
+#[cfg(feature = "coordinator")]
+static COORDINATOR: OnceLock<std::sync::Arc<crate::ice::IceCoordinator>> = OnceLock::new();
+
+/// Request struct for the coordinator-based `ice_start`.
+///
+/// Fields that are not needed for a particular method should be set to 0/NULL.
+#[cfg(feature = "coordinator")]
+#[repr(C)]
+pub struct IceStartRequest {
+    /// Relay address: "host:port" (required).
+    pub relay_addr: *const c_char,
+    /// Bridge line: "cert=<base64> iat-mode=<n>" (required).
+    pub bundle: *const c_char,
+    /// TLS SNI hostname. Empty = no SNI.
+    pub tls_sni: *const c_char,
+    /// SPKI hex pin. Empty = no pinning.
+    pub spki_hex: *const c_char,
+    /// WebTunnel: HTTP Host header.
+    pub host_header: *const c_char,
+    /// WebTunnel: WebSocket base path (e.g. "/api/stream").
+    pub wt_base_path: *const c_char,
+    /// Network fingerprint bytes (opaque, caller-computed). NULL = default.
+    pub network_fingerprint: *const u8,
+    /// Length of the network fingerprint buffer.
+    pub network_fingerprint_len: usize,
+    /// Bitmask of allowed methods (0 = all). Bit N = MethodId(N).
+    pub allowed_methods: u32,
+    /// Path to the SQLite scores database. NULL = in-memory (no persistence).
+    pub scores_path: *const c_char,
+}
+
+/// Result struct returned by `ice_start`.
+#[cfg(feature = "coordinator")]
+#[repr(C)]
+pub struct IceStartResult {
+    /// Local TCP port the proxy is listening on.
+    pub port: u16,
+    /// Which method won the probe race: 0=obfs4, 1=webtunnel, 2=masque.
+    pub method: u8,
+    /// Wall-clock ms from start to first byte through the tunnel.
+    pub latency_ms: u32,
+}
+
+/// Start an ICE session using the FSM-based coordinator.
+///
+/// Sequential probing (top_k_probes=1) for Phase 1 backward compatibility.
+/// Returns 0 on success, -1 on failure.
+#[cfg(feature = "coordinator")]
+#[unsafe(no_mangle)]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub extern "C" fn ice_start(req: IceStartRequest, out: *mut IceStartResult) -> i32 {
+    use crate::ice::{
+        IceConfig, IceCoordinator, MethodSet, NetworkFingerprint, Obfs4Obfuscator,
+        WebTunnelObfuscator, scoring::PersistentScores,
+    };
+
+    let relay_addr = unsafe {
+        req.relay_addr
+            .as_ref()
+            .and_then(|p| CStr::from_ptr(p).to_str().ok())
+            .map(|s| s.to_owned())
+    };
+    let bundle = unsafe {
+        req.bundle
+            .as_ref()
+            .and_then(|p| CStr::from_ptr(p).to_str().ok())
+            .map(|s| s.to_owned())
+    };
+    let (relay_addr, bundle) = match (relay_addr, bundle) {
+        (Some(r), Some(b)) => (r, b),
+        _ => return -1,
+    };
+
+    let tls_sni = unsafe {
+        req.tls_sni
+            .as_ref()
+            .and_then(|p| CStr::from_ptr(p).to_str().ok())
+            .unwrap_or("")
+            .to_owned()
+    };
+    let spki_hex = unsafe {
+        req.spki_hex
+            .as_ref()
+            .and_then(|p| CStr::from_ptr(p).to_str().ok())
+            .unwrap_or("")
+            .to_owned()
+    };
+    let host_header = unsafe {
+        req.host_header
+            .as_ref()
+            .and_then(|p| CStr::from_ptr(p).to_str().ok())
+            .unwrap_or("")
+            .to_owned()
+    };
+    let wt_base_path = unsafe {
+        req.wt_base_path
+            .as_ref()
+            .and_then(|p| CStr::from_ptr(p).to_str().ok())
+            .unwrap_or("")
+            .to_owned()
+    };
+    let fingerprint = if !req.network_fingerprint.is_null() && req.network_fingerprint_len > 0 {
+        let bytes = unsafe {
+            std::slice::from_raw_parts(req.network_fingerprint, req.network_fingerprint_len)
+        };
+        NetworkFingerprint::new(bytes.to_vec())
+    } else {
+        NetworkFingerprint::default()
+    };
+    let allowed_methods = MethodSet::from_bitmask(req.allowed_methods);
+
+    // Default config: parallel probing (top_k_probes=2, happy-eyeballs).
+    let config = IceConfig::default();
+
+    let rt = get_runtime();
+    let result: Result<IceStartResult, ()> = rt.block_on(async {
+        // Stop any existing session first.
+        if let Some(coord) = COORDINATOR.get() {
+            let _ = coord.stop().await;
+        }
+
+        // Build or reuse the coordinator.
+        let coord = if let Some(c) = COORDINATOR.get() {
+            c.clone()
+        } else {
+            // Open scores database.
+            let scores = if !req.scores_path.is_null() {
+                let path_str =
+                    unsafe { CStr::from_ptr(req.scores_path).to_str().ok().unwrap_or("") };
+                if !path_str.is_empty() {
+                    PersistentScores::open_default(path_str)
+                        .await
+                        .map_err(|_| ())?
+                } else {
+                    return Err(());
+                }
+            } else {
+                // In-memory SQLite for testing.
+                PersistentScores::open_default(":memory:")
+                    .await
+                    .map_err(|_| ())?
+            };
+
+            let mut coordinator = IceCoordinator::new(config, scores);
+            coordinator.register(Box::new(Obfs4Obfuscator::new()));
+            coordinator.register(Box::new(WebTunnelObfuscator::new()));
+
+            let arc = std::sync::Arc::new(coordinator);
+            COORDINATOR.set(arc.clone()).map_err(|_| ())?;
+            arc
+        };
+
+        // Update probe requests with TLS/WebTunnel params.
+        // For Phase 1, we pass the TLS params through a thread-local or re-create
+        // the obfuscators with the params. For simplicity, we modify the coordinator
+        // to accept the params in start_session.
+        //
+        // Actually, for Phase 1, the coordinator's execute_probe creates ProbeRequest
+        // with empty params. We need to pass the params through.
+        //
+        // Simplest fix: the coordinator stores the params from the last start_session call.
+        // Let me add an extra parameter set to start_session.
+
+        let session_result = coord
+            .start_session_with_params(
+                relay_addr,
+                bundle,
+                fingerprint,
+                allowed_methods,
+                tls_sni,
+                spki_hex,
+                host_header,
+                wt_base_path,
+            )
+            .await;
+
+        match session_result {
+            Ok(r) => Ok(IceStartResult {
+                port: r.port,
+                method: r.method as u8,
+                latency_ms: r.latency_ms,
+            }),
+            Err(_) => Err(()),
+        }
+    });
+
+    match result {
+        Ok(r) => {
+            if !out.is_null() {
+                unsafe { *out = r };
+            }
+            0
+        }
+        Err(()) => -1,
+    }
+}
+
+/// Stop the active ICE session. Returns 0 if stopped, -1 if nothing was running.
+#[cfg(feature = "coordinator")]
+#[unsafe(no_mangle)]
+pub extern "C" fn ice_stop() -> i32 {
+    let rt = get_runtime();
+    rt.block_on(async {
+        if let Some(coord) = COORDINATOR.get()
+            && coord.stop().await
+        {
+            return 0;
+        }
+        // Also try the legacy stop.
+        ice_proxy_stop()
+    })
+}
+
+/// Returns 1 if an ICE session is currently active, 0 otherwise.
+#[cfg(feature = "coordinator")]
+#[unsafe(no_mangle)]
+pub extern "C" fn ice_is_alive() -> i32 {
+    let rt = get_runtime();
+    rt.block_on(async {
+        if let Some(coord) = COORDINATOR.get()
+            && coord.is_alive().await
+        {
+            return 1;
+        }
+        ice_proxy_is_running()
+    })
+}
+
+/// Returns the local port the ICE proxy is listening on, or 0 if not running.
+#[cfg(feature = "coordinator")]
+#[unsafe(no_mangle)]
+pub extern "C" fn ice_port() -> u16 {
+    let rt = get_runtime();
+    rt.block_on(async {
+        if let Some(coord) = COORDINATOR.get() {
+            let p = coord.port().await;
+            if p != 0 {
+                return p;
+            }
+        }
+        ice_proxy_port()
+    })
+}

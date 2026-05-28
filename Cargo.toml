@@ -1,10 +1,10 @@
 [package]
 name = "construct-ice"
-version = "2.3.2"
+version = "3.0.0"
 edition = "2024"
 description = "ICE (Intrusion Countermeasures Electronics) — traffic obfuscation transport for Construct messenger"
 license = "MIT"
-repository = "https://github.com/maximeliseyev/construct-ice"
+repository = "https://github.com/construct-msg/construct-ice"
 keywords = ["web-tunnel", "pluggable-transport", "censorship-resistance", "tor"]
 
 [lib]
@@ -61,6 +61,26 @@ optional = true
 version = "0.1"
 optional = true
 
+# ICE Coordinator — FSM-based obfuscator selection with happy-eyeballs probing
+# Requires the "coordinator" feature flag (brings in sqlite + async-trait)
+[dependencies.sqlx]
+version = "0.8"
+features = ["runtime-tokio", "sqlite", "macros", "migrate", "chrono"]
+optional = true
+
+[dependencies.async-trait]
+version = "0.1"
+optional = true
+
+[dependencies.tokio-util]
+version = "0.7"
+features = ["codec", "compat"]
+optional = true
+
+[dependencies.bitflags]
+version = "2"
+optional = true
+
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }
 hex = "0.4"
@@ -68,6 +88,12 @@ criterion = { version = "0.5", features = ["async_tokio"] }
 
 [features]
 default = []
+# Enable ICE Coordinator — FSM-based obfuscator selection with happy-eyeballs
+# probing, per-network scoring, and persistent state.
+coordinator = [
+  "dep:sqlx", "dep:async-trait", "dep:tokio-util", "dep:bitflags", "dep:tracing",
+  "tls", "webtunnel",
+]
 # Enable C FFI proxy (ice_proxy_start/stop/is_running) — required for iOS
 ffi = []
 # Enable TLS wrapping (outer TLS before obfs4) — required for DPI evasion.
