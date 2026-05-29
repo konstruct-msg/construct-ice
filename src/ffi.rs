@@ -12,7 +12,7 @@
 //! ## TLS-over-obfs4 mode (DPI evasion)
 //! ```text
 //! [Swift gRPC] -> 127.0.0.1:PORT (plain TCP)
-//!     -> [Rust proxy] -> TLS(SNI=ice.domain) -> obfs4 handshake -> relay:443
+//!     -> [Rust proxy] -> TLS(SNI=veil.domain) -> obfs4 handshake -> relay:443
 //!     -> Traefik TCP passthrough -> gateway TLS termination
 //!     -> obfs4 listener -> gRPC -> main server
 //! ```
@@ -21,13 +21,13 @@
 //!
 //! ```c
 //! // Plain obfs4 (legacy)
-//! int32_t ice_proxy_start(const char *bridge_line, const char *relay_addr, uint16_t *port_out);
+//! int32_t veil_proxy_start(const char *bridge_line, const char *relay_addr, uint16_t *port_out);
 //! // TLS-wrapped obfs4 for DPI evasion
-//! int32_t ice_proxy_start_tls(const char *bridge_line, const char *relay_addr,
+//! int32_t veil_proxy_start_tls(const char *bridge_line, const char *relay_addr,
 //!                             const char *tls_server_name, uint16_t *port_out);
-//! int32_t ice_proxy_stop(void);
-//! int32_t ice_proxy_is_running(void);
-//! uint16_t ice_proxy_port(void);
+//! int32_t veil_proxy_stop(void);
+//! int32_t veil_proxy_is_running(void);
+//! uint16_t veil_proxy_port(void);
 //! ```
 
 use std::{
@@ -50,7 +50,7 @@ fn get_runtime() -> &'static Runtime {
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
-            .expect("ice: failed to create tokio runtime")
+            .expect("veil: failed to create tokio runtime")
     })
 }
 
@@ -70,7 +70,7 @@ static PROXY: Mutex<Option<ProxyHandle>> = Mutex::new(None);
 ///
 /// Returns 0 on success, -1 on failure.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn ice_proxy_start(
+pub extern "C" fn veil_proxy_start(
     bridge_line: *const c_char,
     relay_addr: *const c_char,
     port_out: *mut u16,
@@ -131,7 +131,7 @@ pub extern "C" fn ice_proxy_start(
 #[unsafe(no_mangle)]
 /// Stop all running proxies (plain and TLS-wrapped). Returns 0 if at least one
 /// was stopped, -1 if neither was running.
-pub extern "C" fn ice_proxy_stop() -> i32 {
+pub extern "C" fn veil_proxy_stop() -> i32 {
     let mut stopped = false;
 
     if let Ok(mut guard) = PROXY.lock()
@@ -142,7 +142,7 @@ pub extern "C" fn ice_proxy_stop() -> i32 {
     }
 
     // Also stop the TLS proxy if it is running — prevents stale handles that
-    // would cause ice_proxy_start_tls to return -1 on the next call.
+    // would cause veil_proxy_start_tls to return -1 on the next call.
     #[cfg(feature = "tls")]
     if let Ok(mut guard) = PROXY_TLS.lock()
         && let Some(handle) = guard.take()
@@ -152,7 +152,7 @@ pub extern "C" fn ice_proxy_stop() -> i32 {
     }
 
     // Also stop the WebTunnel proxy — prevents stale handles that would cause
-    // ice_proxy_start_webtunnel to return -1 when rotating to a different relay.
+    // veil_proxy_start_webtunnel to return -1 when rotating to a different relay.
     #[cfg(feature = "webtunnel")]
     if let Ok(mut guard) = PROXY_WEBTUNNEL.lock()
         && let Some(handle) = guard.take()
@@ -166,7 +166,7 @@ pub extern "C" fn ice_proxy_stop() -> i32 {
 
 #[unsafe(no_mangle)]
 /// Returns 1 if the proxy is currently running (plain-obfs4, TLS-wrapped, or WebTunnel), 0 otherwise.
-pub extern "C" fn ice_proxy_is_running() -> i32 {
+pub extern "C" fn veil_proxy_is_running() -> i32 {
     // Plain-obfs4 mode
     if let Ok(guard) = PROXY.lock()
         && guard.is_some()
@@ -193,7 +193,7 @@ pub extern "C" fn ice_proxy_is_running() -> i32 {
 #[unsafe(no_mangle)]
 /// Returns the local TCP port the proxy is listening on, or 0 if not running.
 /// Prefers TLS-wrapped and WebTunnel modes (DPI-resistant) over plain-obfs4.
-pub extern "C" fn ice_proxy_port() -> u16 {
+pub extern "C" fn veil_proxy_port() -> u16 {
     // TLS-wrapped mode (preferred — DPI-resistant, used on port 443)
     #[cfg(feature = "tls")]
     if let Ok(guard) = PROXY_TLS.lock()
@@ -222,7 +222,7 @@ pub extern "C" fn ice_proxy_port() -> u16 {
 /// Use this when both plain and TLS proxies are running simultaneously (dual-proxy
 /// happy-eyeballs mode) to get each port independently.
 #[cfg(feature = "tls")]
-pub extern "C" fn ice_proxy_port_tls() -> u16 {
+pub extern "C" fn veil_proxy_port_tls() -> u16 {
     if let Ok(guard) = PROXY_TLS.lock()
         && let Some(h) = guard.as_ref()
     {
@@ -234,7 +234,7 @@ pub extern "C" fn ice_proxy_port_tls() -> u16 {
 #[unsafe(no_mangle)]
 /// Returns the port of the plain-obfs4 proxy specifically, or 0 if not running.
 /// In dual-proxy mode, this is the secondary relay (e.g. MSK TCP relay).
-pub extern "C" fn ice_proxy_port_plain() -> u16 {
+pub extern "C" fn veil_proxy_port_plain() -> u16 {
     if let Ok(guard) = PROXY.lock()
         && let Some(h) = guard.as_ref()
     {
@@ -275,20 +275,20 @@ async fn handle_connection(mut local: TcpStream, relay_addr: String, config: Cli
                     let _ = copy_bidirectional(&mut local, &mut remote).await;
                 }
                 Err(e) => {
-                    eprintln!("ice: obfs4 handshake failed: {e}");
+                    eprintln!("veil: obfs4 handshake failed: {e}");
                 }
             }
         }
         Err(e) => {
-            eprintln!("ice: relay connect failed: {e}");
+            eprintln!("veil: relay connect failed: {e}");
         }
     }
 }
 
 // ── TLS-wrapped proxy ─────────────────────────────────────────────────────────
 //
-// `ice_proxy_start_tls` — backward-compat: TLS with SNI, no cert pinning.
-// `ice_proxy_start_tls_pinned` — full DPI evasion: fake/empty SNI + SPKI pin.
+// `veil_proxy_start_tls` — backward-compat: TLS with SNI, no cert pinning.
+// `veil_proxy_start_tls_pinned` — full DPI evasion: fake/empty SNI + SPKI pin.
 //
 // Both use rustls via `crate::tls_pinned::build_connector`.
 //
@@ -308,13 +308,13 @@ static PROXY_TLS: Mutex<Option<ProxyHandle>> = Mutex::new(None);
 /// Connections flow: local TCP → TLS to `relay_addr` (SNI=`tls_server_name`) → obfs4 → server.
 ///
 /// `bridge_line`      — bridge parameters (e.g. `"cert=<base64> iat-mode=0"`).
-/// `relay_addr`       — relay address: `"ice.example.com:443"`.
-/// `tls_server_name`  — TLS SNI hostname: `"ice.example.com"`.
+/// `relay_addr`       — relay address: `"veil.example.com:443"`.
+/// `tls_server_name`  — TLS SNI hostname: `"veil.example.com"`.
 /// `port_out`         — local TCP port the proxy listens on.
 ///
-/// Returns 0 on success, -1 on failure. Stop with [`ice_proxy_stop`].
+/// Returns 0 on success, -1 on failure. Stop with [`veil_proxy_stop`].
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn ice_proxy_start_tls(
+pub extern "C" fn veil_proxy_start_tls(
     bridge_line: *const c_char,
     relay_addr: *const c_char,
     tls_server_name: *const c_char,
@@ -404,7 +404,7 @@ pub extern "C" fn ice_proxy_start_tls(
 ///
 /// Returns 0 on success, -1 on failure.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn ice_proxy_start_tls_pinned(
+pub extern "C" fn veil_proxy_start_tls_pinned(
     bridge_line: *const c_char,
     relay_addr: *const c_char,
     tls_sni: *const c_char,
@@ -534,7 +534,7 @@ async fn handle_connection_tls(
     ) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("ice-tls: connector build failed: {e}");
+            eprintln!("veil-tls: connector build failed: {e}");
             return;
         }
     };
@@ -548,7 +548,7 @@ async fn handle_connection_tls(
         let tcp = match TokioTcp::connect(&relay_addr).await {
             Ok(t) => t,
             Err(e) => {
-                eprintln!("ice-tls: tcp connect failed (attempt {attempt}): {e}");
+                eprintln!("veil-tls: tcp connect failed (attempt {attempt}): {e}");
                 // ECONNREFUSED is often transient (relay restart / rate-limit window).
                 // Retry once with a brief pause; any other error is persistent.
                 if attempt == 0 && e.kind() == std::io::ErrorKind::ConnectionRefused {
@@ -571,7 +571,7 @@ async fn handle_connection_tls(
         let tls_stream = match connector.connect(server_name.clone(), tcp).await {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("ice-tls: TLS handshake failed (attempt {attempt}): {e}");
+                eprintln!("veil-tls: TLS handshake failed (attempt {attempt}): {e}");
                 break; // TLS failure is not transient
             }
         };
@@ -583,7 +583,7 @@ async fn handle_connection_tls(
                 return; // Success — done
             }
             Err(e) => {
-                eprintln!("ice-tls: obfs4 handshake failed (attempt {attempt}): {e}");
+                eprintln!("veil-tls: obfs4 handshake failed (attempt {attempt}): {e}");
                 if attempt == 0 {
                     // Brief pause before retry to avoid hammering the server
                     // during epoch-boundary MAC window (~1 second is sufficient).
@@ -598,19 +598,19 @@ async fn handle_connection_tls(
 
 /// Start a TLS-over-obfs4 proxy with a specific browser TLS fingerprint profile.
 ///
-/// Identical to `ice_proxy_start_tls_pinned` but accepts a `tls_profile` string
+/// Identical to `veil_proxy_start_tls_pinned` but accepts a `tls_profile` string
 /// that controls cipher suite ordering and ALPN:
 ///
 /// - `"chrome131"` or `"chrome"` — Chrome 131 ordering
 /// - `"firefox128"` or `"firefox"` — Firefox 128 ordering
-/// - `""` or `"rustls"` — rustls defaults (same as `ice_proxy_start_tls_pinned`)
+/// - `""` or `"rustls"` — rustls defaults (same as `veil_proxy_start_tls_pinned`)
 ///
 /// # Safety
 /// All pointer parameters must be valid null-terminated C strings or null.
 #[cfg(all(feature = "ffi", feature = "tls"))]
 #[unsafe(no_mangle)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn ice_proxy_start_tls_profiled(
+pub extern "C" fn veil_proxy_start_tls_profiled(
     bridge_line: *const c_char,
     relay_addr: *const c_char,
     tls_sni: *const c_char,
@@ -720,13 +720,13 @@ static PROXY_WEBTUNNEL: Mutex<Option<ProxyHandle>> = Mutex::new(None);
 /// `port_out`     — local TCP port the proxy listens on.
 ///
 /// The auth token is computed per-connection from `bridge_cert` and the current time period.
-/// Returns 0 on success, -1 on failure. Stop with `ice_proxy_stop`.
+/// Returns 0 on success, -1 on failure. Stop with `veil_proxy_stop`.
 ///
 /// TODO(refactor): 7 raw C pointers is fragile — group into `WebTunnelConfig` struct passed by
 /// pointer, mirroring the pattern used by the bridging header on the Swift side. This also makes
 /// adding future fields (e.g. obfs4 iat-mode, circuit isolation) a non-breaking change.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn ice_proxy_start_webtunnel(
+pub extern "C" fn veil_proxy_start_webtunnel(
     relay_addr: *const c_char,
     tls_sni: *const c_char,
     spki_hex: *const c_char,
@@ -800,7 +800,7 @@ pub extern "C" fn ice_proxy_start_webtunnel(
 #[cfg(feature = "webtunnel")]
 #[unsafe(no_mangle)]
 /// Returns the local port the WebTunnel proxy is listening on (0 = not running).
-pub extern "C" fn ice_proxy_port_webtunnel() -> u16 {
+pub extern "C" fn veil_proxy_port_webtunnel() -> u16 {
     PROXY_WEBTUNNEL
         .lock()
         .ok()
@@ -929,27 +929,27 @@ async fn handle_connection_webtunnel(
     }
 }
 
-// ── ICE Coordinator FFI (Phase 1) ───────────────────────────────────────────
+// ── VEIL Coordinator FFI (Phase 1) ───────────────────────────────────────────
 //
 // New FFI surface using the FSM-based coordinator.
-// Replaces the legacy `ice_proxy_start*` functions in Phase 3.
+// Replaces the legacy `veil_proxy_start*` functions in Phase 3.
 //
 // ```c
-// int32_t ice_start(IceStartRequest req, IceStartResult *out);
-// void    ice_stop(void);
-// bool    ice_is_alive(void);
-// uint16_t ice_port(void);
+// int32_t veil_start(VeilStartRequest req, VeilStartResult *out);
+// void    veil_stop(void);
+// bool    veil_is_alive(void);
+// uint16_t veil_port(void);
 // ```
 
 #[cfg(feature = "coordinator")]
-static COORDINATOR: OnceLock<std::sync::Arc<crate::ice::IceCoordinator>> = OnceLock::new();
+static COORDINATOR: OnceLock<std::sync::Arc<crate::veil::VeilCoordinator>> = OnceLock::new();
 
-/// Request struct for the coordinator-based `ice_start`.
+/// Request struct for the coordinator-based `veil_start`.
 ///
 /// Fields that are not needed for a particular method should be set to 0/NULL.
 #[cfg(feature = "coordinator")]
 #[repr(C)]
-pub struct IceStartRequest {
+pub struct VeilStartRequest {
     /// Relay address: "host:port" (required).
     pub relay_addr: *const c_char,
     /// Bridge line: "cert=<base64> iat-mode=<n>" (required).
@@ -972,10 +972,10 @@ pub struct IceStartRequest {
     pub scores_path: *const c_char,
 }
 
-/// Result struct returned by `ice_start`.
+/// Result struct returned by `veil_start`.
 #[cfg(feature = "coordinator")]
 #[repr(C)]
-pub struct IceStartResult {
+pub struct VeilStartResult {
     /// Local TCP port the proxy is listening on.
     pub port: u16,
     /// Which method won the probe race: 0=obfs4, 1=webtunnel, 2=masque.
@@ -984,16 +984,16 @@ pub struct IceStartResult {
     pub latency_ms: u32,
 }
 
-/// Start an ICE session using the FSM-based coordinator.
+/// Start an VEIL session using the FSM-based coordinator.
 ///
 /// Sequential probing (top_k_probes=1) for Phase 1 backward compatibility.
 /// Returns 0 on success, -1 on failure.
 #[cfg(feature = "coordinator")]
 #[unsafe(no_mangle)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn ice_start(req: IceStartRequest, out: *mut IceStartResult) -> i32 {
-    use crate::ice::{
-        IceConfig, IceCoordinator, MethodSet, NetworkFingerprint, Obfs4Obfuscator,
+pub extern "C" fn veil_start(req: VeilStartRequest, out: *mut VeilStartResult) -> i32 {
+    use crate::veil::{
+        VeilConfig, VeilCoordinator, MethodSet, NetworkFingerprint, Obfs4Obfuscator,
         WebTunnelObfuscator, scoring::PersistentScores,
     };
 
@@ -1053,10 +1053,10 @@ pub extern "C" fn ice_start(req: IceStartRequest, out: *mut IceStartResult) -> i
     let allowed_methods = MethodSet::from_bitmask(req.allowed_methods);
 
     // Default config: parallel probing (top_k_probes=2, happy-eyeballs).
-    let config = IceConfig::default();
+    let config = VeilConfig::default();
 
     let rt = get_runtime();
-    let result: Result<IceStartResult, ()> = rt.block_on(async {
+    let result: Result<VeilStartResult, ()> = rt.block_on(async {
         // Stop any existing session first.
         if let Some(coord) = COORDINATOR.get() {
             let _ = coord.stop().await;
@@ -1084,7 +1084,7 @@ pub extern "C" fn ice_start(req: IceStartRequest, out: *mut IceStartResult) -> i
                     .map_err(|_| ())?
             };
 
-            let mut coordinator = IceCoordinator::new(config, scores);
+            let mut coordinator = VeilCoordinator::new(config, scores);
             coordinator.register(Box::new(Obfs4Obfuscator::new()));
             coordinator.register(Box::new(WebTunnelObfuscator::new()));
 
@@ -1118,7 +1118,7 @@ pub extern "C" fn ice_start(req: IceStartRequest, out: *mut IceStartResult) -> i
             .await;
 
         match session_result {
-            Ok(r) => Ok(IceStartResult {
+            Ok(r) => Ok(VeilStartResult {
                 port: r.port,
                 method: r.method as u8,
                 latency_ms: r.latency_ms,
@@ -1138,10 +1138,10 @@ pub extern "C" fn ice_start(req: IceStartRequest, out: *mut IceStartResult) -> i
     }
 }
 
-/// Stop the active ICE session. Returns 0 if stopped, -1 if nothing was running.
+/// Stop the active VEIL session. Returns 0 if stopped, -1 if nothing was running.
 #[cfg(feature = "coordinator")]
 #[unsafe(no_mangle)]
-pub extern "C" fn ice_stop() -> i32 {
+pub extern "C" fn veil_stop() -> i32 {
     let rt = get_runtime();
     rt.block_on(async {
         if let Some(coord) = COORDINATOR.get()
@@ -1150,14 +1150,14 @@ pub extern "C" fn ice_stop() -> i32 {
             return 0;
         }
         // Also try the legacy stop.
-        ice_proxy_stop()
+        veil_proxy_stop()
     })
 }
 
-/// Returns 1 if an ICE session is currently active, 0 otherwise.
+/// Returns 1 if an VEIL session is currently active, 0 otherwise.
 #[cfg(feature = "coordinator")]
 #[unsafe(no_mangle)]
-pub extern "C" fn ice_is_alive() -> i32 {
+pub extern "C" fn veil_is_alive() -> i32 {
     let rt = get_runtime();
     rt.block_on(async {
         if let Some(coord) = COORDINATOR.get()
@@ -1165,14 +1165,14 @@ pub extern "C" fn ice_is_alive() -> i32 {
         {
             return 1;
         }
-        ice_proxy_is_running()
+        veil_proxy_is_running()
     })
 }
 
-/// Returns the local port the ICE proxy is listening on, or 0 if not running.
+/// Returns the local port the VEIL proxy is listening on, or 0 if not running.
 #[cfg(feature = "coordinator")]
 #[unsafe(no_mangle)]
-pub extern "C" fn ice_port() -> u16 {
+pub extern "C" fn veil_port() -> u16 {
     let rt = get_runtime();
     rt.block_on(async {
         if let Some(coord) = COORDINATOR.get() {
@@ -1181,6 +1181,6 @@ pub extern "C" fn ice_port() -> u16 {
                 return p;
             }
         }
-        ice_proxy_port()
+        veil_proxy_port()
     })
 }

@@ -72,7 +72,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "construct-ice"
+name = "construct-veil"
 version = "0.2.4"
 dependencies = [
  "base64",
@@ -93,11 +93,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "construct-ice-fuzz"
+name = "construct-veil-fuzz"
 version = "0.0.0"
 dependencies = [
  "arbitrary",
- "construct-ice",
+ "construct-veil",
  "curve25519-elligator2",
  "libfuzzer-sys",
 ]

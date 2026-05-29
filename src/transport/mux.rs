@@ -13,10 +13,10 @@
 //! # Example
 //!
 //! ```rust,no_run
-//! use construct_ice::transport::mux::{
+//! use construct_veil::transport::mux::{
 //!     DirectTransport, Obfs4Transport, TransportMultiplexer, MuxStrategy,
 //! };
-//! use construct_ice::ClientConfig;
+//! use construct_veil::ClientConfig;
 //!
 //! # async fn example() -> std::io::Result<()> {
 //! let cfg = ClientConfig::from_bridge_cert("...").unwrap();

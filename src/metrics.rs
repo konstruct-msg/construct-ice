@@ -1,4 +1,4 @@
-//! Prometheus metrics for construct-ice relay nodes.
+//! Prometheus metrics for construct-veil relay nodes.
 //!
 //! Feature-gated behind `metrics`. When disabled, all instrumentation
 //! calls compile to no-ops with zero runtime cost.
@@ -56,7 +56,7 @@ pub static ICE_BYTES_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
     register_int_counter_vec!(
         opts!(
             "ice_bytes_total",
-            "Total bytes relayed by construct-ice (in = from client, out = to client)"
+            "Total bytes relayed by construct-veil (in = from client, out = to client)"
         ),
         &["direction"]
     )
@@ -166,7 +166,7 @@ pub async fn serve_metrics(addr: SocketAddr) -> std::io::Result<()> {
     use tokio::net::TcpListener;
 
     let listener = TcpListener::bind(addr).await?;
-    tracing::info!("construct-ice metrics endpoint listening on {addr}");
+    tracing::info!("construct-veil metrics endpoint listening on {addr}");
 
     loop {
         let (mut stream, _peer) = listener.accept().await?;

@@ -1,6 +1,6 @@
 //! End-to-end tests: full client ↔ server over localhost TCP.
 
-use construct_ice::{ClientConfig, Obfs4Listener, Obfs4Stream, ServerConfig};
+use construct_veil::{ClientConfig, Obfs4Listener, Obfs4Stream, ServerConfig};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 /// Helper: find a free TCP port.
@@ -186,17 +186,17 @@ async fn independent_sessions_different_keys() {
 /// IAT mode integration tests — round-trip with Enabled and Paranoid modes.
 #[tokio::test(flavor = "multi_thread")]
 async fn iat_mode_enabled_round_trip() {
-    use construct_ice::IatMode;
+    use construct_veil::IatMode;
     iat_round_trip(IatMode::Enabled).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn iat_mode_paranoid_round_trip() {
-    use construct_ice::IatMode;
+    use construct_veil::IatMode;
     iat_round_trip(IatMode::Paranoid).await;
 }
 
-async fn iat_round_trip(iat_mode: construct_ice::IatMode) {
+async fn iat_round_trip(iat_mode: construct_veil::IatMode) {
     let port = free_port().await;
     let addr = format!("127.0.0.1:{port}");
 
@@ -232,7 +232,7 @@ async fn iat_round_trip(iat_mode: construct_ice::IatMode) {
 /// Bridge line round-trip: ServerConfig::bridge_line → ClientConfig::from_bridge_line.
 #[test]
 fn bridge_line_roundtrip() {
-    use construct_ice::IatMode;
+    use construct_veil::IatMode;
 
     for &mode in &[IatMode::None, IatMode::Enabled, IatMode::Paranoid] {
         let server = ServerConfig::generate().with_iat(mode);

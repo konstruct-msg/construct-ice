@@ -1,10 +1,10 @@
-# AGENTS.md — construct-ice
+# AGENTS.md — construct-veil
 
 Context for AI agents working in this repository.
 
 ---
 
-## What is construct-ice?
+## What is construct-veil?
 
 obfs4 pluggable transport implementation in Rust for Construct Messenger.
 Makes gRPC traffic indistinguishable from random noise — DPI resistance for Iran, China, Russia.
@@ -100,4 +100,3 @@ Required note sections: `# Context`, `# What Changed`, `# Why`, `# Intended Outc
 
 Append a one-line entry to `wiki/log.md` after writing a note.
 Format: `[YYYY-MM-DD HH:MM] note | <topic>`
-

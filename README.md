@@ -1,4 +1,4 @@
-# construct-ice
+# construct-veil
 
 obfs4 pluggable transport implementation in Rust for Construct messenger.
 
@@ -25,7 +25,7 @@ used in censorship (Iran, China, Russia).
 
 ## Protocol Polymorphism
 
-Every construct-ice connection is cryptographically distinct from every other connection —
+Every construct-veil connection is cryptographically distinct from every other connection —
 including connections from the same client to the same relay.
 
 This is achieved through **PRNG seed re-keying**: during and after the handshake, both sides
@@ -63,19 +63,19 @@ affect wire compatibility with the Go reference implementation unless noted.
 ### 1. Minimum client padding: 77 bytes (spec: 85)
 
 The Go reference implementation sends a minimum of 85 bytes of client random padding.
-construct-ice sends a minimum of **77 bytes** (`MAC_LENGTH(32) + MIN_HANDSHAKE_LENGTH(45)`).
+construct-veil sends a minimum of **77 bytes** (`MAC_LENGTH(32) + MIN_HANDSHAKE_LENGTH(45)`).
 
 **Reason:** Earlier iOS versions of the client relied on 77-byte minimum for packet
 alignment. The deviation is safe — both values provide adequate padding to prevent
 fingerprinting the handshake length. Go servers accept any padding ≥ 0.
 
 **Wire compatibility:** ✅ Go server accepts construct-ice clients. Go clients accepted by
-construct-ice server (Go sends ≥ 85, which is > 77 minimum).
+construct-veil server (Go sends ≥ 85, which is > 77 minimum).
 
 ### 2. Nonce wraparound: connection termination (spec: undefined)
 
 The obfs4 spec does not define behavior when the 64-bit frame counter (nonce) wraps around.
-construct-ice uses `u64::checked_add` for the nonce — if it would overflow, the encode/decode
+construct-veil uses `u64::checked_add` for the nonce — if it would overflow, the encode/decode
 returns an error and the connection is torn down cleanly.
 
 **Practical impact:** 2⁶⁴ frames × minimum frame size ≈ **18 exabytes** of data per session.
@@ -84,11 +84,11 @@ The check is a defence-in-depth measure against potential counter-manipulation e
 
 ### 3. Length obfuscator re-keying on PrngSeed (spec: IAT only)
 
-The original obfs4 spec says PrngSeed updates the IAT RNG only. construct-ice also re-keys
+The original obfs4 spec says PrngSeed updates the IAT RNG only. construct-veil also re-keys
 the SipHash-2-4 length obfuscator. See [Protocol Polymorphism](#protocol-polymorphism) above.
 
 **Wire compatibility:** ✅ Both sides use the same seed, so they derive the same new key.
-Go clients connecting to a construct-ice server will **not** re-key their length obfuscator —
+Go clients connecting to a construct-veil server will **not** re-key their length obfuscator —
 this is safe because the server re-keys only its encoder, which the Go client's decoder does
 not need to know about.
 

@@ -1,5 +1,5 @@
 use bytes::BytesMut;
-use construct_ice::framing::encoder::FrameEncoder;
+use construct_veil::framing::encoder::FrameEncoder;
 use criterion::{Criterion, criterion_group, criterion_main};
 
 fn bench_frame_encode(c: &mut Criterion) {

@@ -15,8 +15,8 @@
 //! # Usage
 //!
 //! ```rust,no_run
-//! use construct_ice::{ClientConfig, Obfs4Stream};
-//! use construct_ice::traffic_mode::{TrafficMode, MimicryProfile, CoverTrafficScheduler};
+//! use construct_veil::{ClientConfig, Obfs4Stream};
+//! use construct_veil::traffic_mode::{TrafficMode, MimicryProfile, CoverTrafficScheduler};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let config = ClientConfig::from_bridge_cert("...")
@@ -211,10 +211,10 @@ pub const MAX_COVER_FRAME_BYTES: usize = 1_448;
 /// # Example
 ///
 /// ```rust,no_run
-/// use construct_ice::traffic_mode::{TrafficMode, CoverTrafficScheduler};
+/// use construct_veil::traffic_mode::{TrafficMode, CoverTrafficScheduler};
 /// use std::time::Duration;
 ///
-/// let mode = TrafficMode::Mimicry(construct_ice::traffic_mode::MimicryProfile::WebBrowsing);
+/// let mode = TrafficMode::Mimicry(construct_veil::traffic_mode::MimicryProfile::WebBrowsing);
 /// let mut sched = CoverTrafficScheduler::new(mode);
 ///
 /// // In an async loop:

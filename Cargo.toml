@@ -1,14 +1,14 @@
 [package]
-name = "construct-ice"
+name = "construct-veil"
 version = "3.0.0"
 edition = "2024"
-description = "ICE (Intrusion Countermeasures Electronics) — traffic obfuscation transport for Construct messenger"
+description = "VEIL — (Variable Encoded Interface Layer) — traffic obfuscation transport for Construct messenger"
 license = "MIT"
-repository = "https://github.com/construct-msg/construct-ice"
+repository = "https://github.com/construct-msg/construct-veil"
 keywords = ["web-tunnel", "pluggable-transport", "censorship-resistance", "tor"]
 
 [lib]
-name = "construct_ice"
+name = "construct_veil"
 path = "src/lib.rs"
 crate-type = ["staticlib", "rlib"]
 
@@ -61,7 +61,7 @@ optional = true
 version = "0.1"
 optional = true
 
-# ICE Coordinator — FSM-based obfuscator selection with happy-eyeballs probing
+# VEIL Coordinator — FSM-based obfuscator selection with happy-eyeballs probing
 # Requires the "coordinator" feature flag (brings in sqlite + async-trait)
 [dependencies.sqlx]
 version = "0.8"
@@ -88,13 +88,13 @@ criterion = { version = "0.5", features = ["async_tokio"] }
 
 [features]
 default = []
-# Enable ICE Coordinator — FSM-based obfuscator selection with happy-eyeballs
+# Enable VEIL Coordinator — FSM-based obfuscator selection with happy-eyeballs
 # probing, per-network scoring, and persistent state.
 coordinator = [
   "dep:sqlx", "dep:async-trait", "dep:tokio-util", "dep:bitflags", "dep:tracing",
   "tls", "webtunnel",
 ]
-# Enable C FFI proxy (ice_proxy_start/stop/is_running) — required for iOS
+# Enable C FFI proxy (veil_proxy_start/stop/is_running) — required for iOS
 ffi = []
 # Enable TLS wrapping (outer TLS before obfs4) — required for DPI evasion.
 # Uses rustls with a custom SPKI-pinning verifier for full SNI and cert control.

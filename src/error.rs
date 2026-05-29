@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-/// All errors produced by construct-ice.
+/// All errors produced by construct-veil.
 #[derive(Debug, Error)]
 pub enum Error {
     // ── Handshake ───────────────────────────────────────────────────────────

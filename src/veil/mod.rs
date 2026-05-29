@@ -1,20 +1,20 @@
-//! ICE Coordinator — FSM-based obfuscator selection with happy-eyeballs probing.
+//! VEIL Coordinator — FSM-based obfuscator selection with happy-eyeballs probing.
 //!
 //! Per [`CONSTRUCT_ICE_FSM_SPEC`](docs/CONSTRUCT_ICE_FSM_SPEC.md), this module
 //! implements:
 //!
 //! - **`ObfuscatorFSM`** — pure state machine describing the lifecycle of one ICE session.
-//!   No I/O; emits [`IceEffect`]s that the caller (or `ProbeOrchestrator`) executes.
-//! - **`IceConfig`** — fully parameterizable thresholds.
+//!   No I/O; emits [`VeilEffect`]s that the caller (or `ProbeOrchestrator`) executes.
+//! - **`VeilConfig`** — fully parameterizable thresholds.
 //! - **`MethodId`** — enum of available obfuscation methods.
 //! - **`NetworkFingerprint`** — opaque network identifier for per-network scoring.
 //! - **`PersistentScores`** — SQLite-backed per-network scoring store.
-//! - **`IceCoordinator`** — async orchestrator that drives the FSM and manages probes.
+//! - **`VeilCoordinator`** — async orchestrator that drives the FSM and manages probes.
 //!
 //! # Usage
 //!
 //! ```ignore
-//! let mut coordinator = IceCoordinator::new(IceConfig::default(), scores);
+//! let mut coordinator = VeilCoordinator::new(VeilConfig::default(), scores);
 //! coordinator.register(Box::new(Obfs4Obfuscator::new()));
 //! coordinator.register(Box::new(WebTunnelObfuscator::new()));
 //!

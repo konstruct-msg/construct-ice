@@ -12,7 +12,7 @@
 
 use std::time::Duration;
 
-use construct_ice::{
+use construct_veil::{
     ClientConfig, MimicryProfile, Obfs4Listener, Obfs4Stream, ServerConfig, TrafficMode,
     traffic_mode::CoverTrafficScheduler,
 };
@@ -39,7 +39,7 @@ async fn connected_pair(
     let addr = format!("127.0.0.1:{port}");
 
     let server_cfg = ServerConfig::generate()
-        .with_iat(construct_ice::IatMode::None)
+        .with_iat(construct_veil::IatMode::None)
         .with_handshake_timeout(Duration::from_millis(400));
     let cert = server_cfg.bridge_cert();
     let listener = Obfs4Listener::bind(&addr, server_cfg).await.unwrap();

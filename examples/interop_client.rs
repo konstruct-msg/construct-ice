@@ -1,7 +1,7 @@
 //! Minimal obfs4 client for local interop testing.
 //! Usage: cargo run --example interop_client -- <addr> <bridge_cert>
 
-use construct_ice::{ClientConfig, Obfs4Stream};
+use construct_veil::{ClientConfig, Obfs4Stream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[tokio::main]
@@ -18,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = ClientConfig::from_bridge_cert(&cert)?;
     let mut stream = Obfs4Stream::connect(&addr, config).await?;
 
-    stream.write_all(b"hello from construct-ice").await?;
+    stream.write_all(b"hello from construct-veil").await?;
 
     let mut response = [0u8; 64];
     let n = stream.read(&mut response).await?;

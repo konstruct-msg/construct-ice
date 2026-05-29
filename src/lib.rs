@@ -1,4 +1,4 @@
-//! # construct-ice
+//! # construct-veil
 //!
 //! ICE (Intrusion Countermeasures Electronics) — obfs4 pluggable transport for Construct Messenger.
 //!
@@ -37,9 +37,9 @@
 //!
 //! ### Client
 //! ```rust,no_run
-//! use construct_ice::{ClientConfig, Obfs4Stream};
+//! use construct_veil::{ClientConfig, Obfs4Stream};
 //!
-//! # async fn example() -> Result<(), construct_ice::Error> {
+//! # async fn example() -> Result<(), construct_veil::Error> {
 //! let config = ClientConfig::from_bridge_cert("base64_bridge_cert_here")?;
 //! let mut stream = Obfs4Stream::connect("relay.example.com:443", config).await?;
 //! // stream implements AsyncRead + AsyncWrite — pass to tonic/hyper
@@ -49,9 +49,9 @@
 //!
 //! ### Server
 //! ```rust,no_run
-//! use construct_ice::{ServerConfig, Obfs4Listener};
+//! use construct_veil::{ServerConfig, Obfs4Listener};
 //!
-//! # async fn example() -> Result<(), construct_ice::Error> {
+//! # async fn example() -> Result<(), construct_veil::Error> {
 //! let config = ServerConfig::generate();
 //! let listener = Obfs4Listener::bind("0.0.0.0:443", config).await?;
 //! while let Ok((stream, addr)) = listener.accept().await {
@@ -89,7 +89,7 @@ pub mod metrics;
 /// ICE Coordinator — FSM-based obfuscator selection with happy-eyeballs probing,
 /// per-network scoring, and persistent state.
 #[cfg(feature = "coordinator")]
-pub mod ice;
+pub mod veil;
 
 mod error;
 

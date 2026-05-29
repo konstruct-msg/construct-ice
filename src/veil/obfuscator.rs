@@ -3,7 +3,7 @@
 //! Adding a new method (e.g. Masque) requires:
 //! 1. Implement `Obfuscator` for the new type.
 //! 2. Add a variant to `MethodId`.
-//! 3. Register with `IceCoordinator::register()`.
+//! 3. Register with `VeilCoordinator::register()`.
 //!
 //! No changes needed to Swift/Kotlin clients.
 
@@ -11,7 +11,7 @@ use std::future::Future;
 
 use tokio_util::sync::CancellationToken;
 
-use crate::ice::fsm::MethodId;
+use crate::veil::fsm::MethodId;
 
 /// Handle returned by an obfuscator after starting a probe.
 ///

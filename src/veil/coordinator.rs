@@ -1,9 +1,9 @@
-//! IceCoordinator — the async orchestrator that drives the FSM, executes probes,
+//! VeilCoordinator — the async orchestrator that drives the FSM, executes probes,
 //! and manages the active proxy.
 //!
 //! This is the bridge between the pure FSM (`reduce()`) and real I/O:
-//! - Executes `IceEffect`s (start probes, cancel, record scores, schedule cooldown)
-//! - Feeds `IceEvent`s back to the FSM based on probe results
+//! - Executes `VeilEffect`s (start probes, cancel, record scores, schedule cooldown)
+//! - Feeds `VeilEvent`s back to the FSM based on probe results
 //! - Manages the active proxy loop once a method wins the probe race
 
 #![allow(missing_docs)]
@@ -22,12 +22,12 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
-use crate::ice::fsm::{
-    IceConfig, IceEffect, IceEvent, IceState, MethodId, MethodSet, NetworkFingerprint,
+use crate::veil::fsm::{
+    VeilConfig, VeilEffect, VeilEvent, VeilState, MethodId, MethodSet, NetworkFingerprint,
     ProbeFailureReason, TransportFailureKind, reduce,
 };
-use crate::ice::obfuscator::{Obfuscator, ObfuscatorError, ProbeRequest};
-use crate::ice::scoring::{CachedScoreLookup, PersistentScores};
+use crate::veil::obfuscator::{Obfuscator, ObfuscatorError, ProbeRequest};
+use crate::veil::scoring::{CachedScoreLookup, PersistentScores};
 
 /// Result of a single probe attempt.
 struct ProbeResult {
@@ -59,7 +59,7 @@ pub struct CoordinatorStartResult {
 }
 
 /// Handle to a running coordinator session.
-/// Used by `ice_stop()` to shut down the active proxy.
+/// Used by `veil_stop()` to shut down the active proxy.
 struct ActiveSession {
     port: u16,
     #[allow(dead_code)]
@@ -67,20 +67,20 @@ struct ActiveSession {
     shutdown_tx: oneshot::Sender<()>,
 }
 
-/// The main ICE coordinator.
+/// The main VEIL coordinator.
 ///
 /// Drives the FSM through probing, manages parallel probe tasks,
 /// and runs the proxy loop for the winning method.
-pub struct IceCoordinator {
-    config: IceConfig,
+pub struct VeilCoordinator {
+    config: VeilConfig,
     scores: Arc<PersistentScores>,
     obfuscators: HashMap<MethodId, Arc<dyn Obfuscator>>,
     active: Arc<Mutex<Option<ActiveSession>>>,
 }
 
-impl IceCoordinator {
+impl VeilCoordinator {
     /// Create a new coordinator with the given config and scores store.
-    pub fn new(config: IceConfig, scores: PersistentScores) -> Self {
+    pub fn new(config: VeilConfig, scores: PersistentScores) -> Self {
         Self {
             config,
             scores: Arc::new(scores),
@@ -95,7 +95,7 @@ impl IceCoordinator {
             .insert(obfuscator.method_id(), Arc::from(obfuscator));
     }
 
-    /// Start an ICE session with full TLS/WebTunnel parameters.
+    /// Start an VEIL session with full TLS/WebTunnel parameters.
     ///
     /// This is the main entry point for the coordinator.
     /// For Phase 1 (top_k_probes=1), probes are executed sequentially.
@@ -112,7 +112,7 @@ impl IceCoordinator {
         wt_base_path: String,
     ) -> Result<CoordinatorStartResult, CoordinatorError> {
         let start_time = Instant::now();
-        let mut state = IceState::Idle;
+        let mut state = VeilState::Idle;
 
         info!(
             target: "ice::coordinator",
@@ -132,13 +132,13 @@ impl IceCoordinator {
 
             // Determine the next event based on current state.
             let event = match &state {
-                IceState::Idle => IceEvent::Start {
+                VeilState::Idle => VeilEvent::Start {
                     relay: relay.clone(),
                     bundle: bundle.clone(),
                     fingerprint: fingerprint.clone(),
                     allowed_methods,
                 },
-                IceState::Cooldown { until } => {
+                VeilState::Cooldown { until } => {
                     let remaining = until.saturating_duration_since(now);
                     if !remaining.is_zero() {
                         info!(
@@ -148,9 +148,9 @@ impl IceCoordinator {
                         );
                         tokio::time::sleep(remaining).await;
                     }
-                    IceEvent::CooldownElapsed
+                    VeilEvent::CooldownElapsed
                 }
-                IceState::Active { .. } | IceState::Probing { .. } | IceState::Degraded { .. } => {
+                VeilState::Active { .. } | VeilState::Probing { .. } | VeilState::Degraded { .. } => {
                     break;
                 }
             };
@@ -180,7 +180,7 @@ impl IceCoordinator {
 
             // Check terminal states.
             match &state {
-                IceState::Active { method, port, .. } => {
+                VeilState::Active { method, port, .. } => {
                     let latency = start_time.elapsed().as_millis() as u32;
                     info!(
                         target: "ice::coordinator",
@@ -199,7 +199,7 @@ impl IceCoordinator {
                         latency_ms: latency,
                     });
                 }
-                IceState::Idle => {
+                VeilState::Idle => {
                     return Err(CoordinatorError::Stopped);
                 }
                 _ => {}
@@ -209,7 +209,7 @@ impl IceCoordinator {
         unreachable!("FSM should transition to Active, Idle, or Cooldown")
     }
 
-    /// Start an ICE session with default TLS/WebTunnel parameters.
+    /// Start an VEIL session with default TLS/WebTunnel parameters.
     ///
     /// Delegates to [`start_session_with_params`] with empty TLS/WebTunnel params.
     pub async fn start_session(
@@ -236,11 +236,11 @@ impl IceCoordinator {
     #[allow(clippy::too_many_arguments)]
     async fn execute_effect_with_params(
         &self,
-        effect: &IceEffect,
+        effect: &VeilEffect,
         fingerprint: &NetworkFingerprint,
         relay: &str,
         bundle: &str,
-        state: &mut IceState,
+        state: &mut VeilState,
         scores_cache: &CachedScoreLookup,
         tls_sni: &str,
         spki_hex: &str,
@@ -249,7 +249,7 @@ impl IceCoordinator {
         _start_time: Instant,
     ) -> Result<(), CoordinatorError> {
         match effect {
-            IceEffect::StartProbes { methods, .. } => {
+            VeilEffect::StartProbes { methods, .. } => {
                 info!(
                     target: "ice::fsm",
                     "probing started  fingerprint={} methods={:?} reason=fresh",
@@ -290,7 +290,7 @@ impl IceCoordinator {
                 }
             }
 
-            IceEffect::CancelOtherProbes { winner } => {
+            VeilEffect::CancelOtherProbes { winner } => {
                 info!(
                     target: "ice::fsm",
                     "cancelled other probes  winner={}",
@@ -298,7 +298,7 @@ impl IceCoordinator {
                 );
             }
 
-            IceEffect::StopActive => {
+            VeilEffect::StopActive => {
                 info!(target: "ice::fsm", "stop_active");
                 let mut guard = self.active.lock().await;
                 if let Some(session) = guard.take() {
@@ -306,7 +306,7 @@ impl IceCoordinator {
                 }
             }
 
-            IceEffect::ScheduleCooldown { duration } => {
+            VeilEffect::ScheduleCooldown { duration } => {
                 info!(
                     target: "ice::fsm",
                     "cooldown  duration={:?}s reason=all_probes_failed",
@@ -314,7 +314,7 @@ impl IceCoordinator {
                 );
             }
 
-            IceEffect::RecordScore {
+            VeilEffect::RecordScore {
                 method,
                 fingerprint: fp,
                 outcome,
@@ -341,7 +341,7 @@ impl IceCoordinator {
         fingerprint: &NetworkFingerprint,
         relay: &str,
         bundle: &str,
-        state: &mut IceState,
+        state: &mut VeilState,
         scores_cache: &CachedScoreLookup,
         tls_sni: &str,
         spki_hex: &str,
@@ -390,7 +390,7 @@ impl IceCoordinator {
                     )
                     .await;
 
-                    if matches!(*state, IceState::Cooldown { .. } | IceState::Idle) {
+                    if matches!(*state, VeilState::Cooldown { .. } | VeilState::Idle) {
                         break;
                     }
                 }
@@ -411,7 +411,7 @@ impl IceCoordinator {
         fingerprint: &NetworkFingerprint,
         relay: &str,
         bundle: &str,
-        state: &mut IceState,
+        state: &mut VeilState,
         scores_cache: &CachedScoreLookup,
         tls_sni: &str,
         spki_hex: &str,
@@ -572,7 +572,7 @@ impl IceCoordinator {
             let now_sys = SystemTime::now();
             let (new_state, effects) = reduce(
                 state.clone(),
-                IceEvent::ProbeSucceeded {
+                VeilEvent::ProbeSucceeded {
                     method: winning_method,
                     port,
                     latency_ms,
@@ -586,7 +586,7 @@ impl IceCoordinator {
 
             // Execute effects (RecordScore).
             for sub_effect in &effects {
-                if let IceEffect::RecordScore {
+                if let VeilEffect::RecordScore {
                     method: sm,
                     outcome,
                     ..
@@ -606,7 +606,7 @@ impl IceCoordinator {
                     .record(
                         fingerprint,
                         *failed_method,
-                        crate::ice::fsm::ScoreOutcome::Failure { reason: *reason },
+                        crate::veil::fsm::ScoreOutcome::Failure { reason: *reason },
                     )
                     .await;
             }
@@ -634,7 +634,7 @@ impl IceCoordinator {
                 .record(
                     fingerprint,
                     *method,
-                    crate::ice::fsm::ScoreOutcome::Failure { reason: *reason },
+                    crate::veil::fsm::ScoreOutcome::Failure { reason: *reason },
                 )
                 .await;
 
@@ -643,7 +643,7 @@ impl IceCoordinator {
             let now_sys = SystemTime::now();
             let (new_state, _effects) = reduce(
                 state.clone(),
-                IceEvent::ProbeFailed {
+                VeilEvent::ProbeFailed {
                     method: *method,
                     reason: *reason,
                 },
@@ -667,7 +667,7 @@ impl IceCoordinator {
         fingerprint: &NetworkFingerprint,
         relay: &str,
         bundle: &str,
-        state: &mut IceState,
+        state: &mut VeilState,
         scores_cache: &CachedScoreLookup,
     ) -> Result<(), CoordinatorError> {
         // Bind a local listener for the proxy.
@@ -688,7 +688,7 @@ impl IceCoordinator {
         let now_sys = SystemTime::now();
         let (new_state, effects) = reduce(
             state.clone(),
-            IceEvent::ProbeSucceeded {
+            VeilEvent::ProbeSucceeded {
                 method,
                 port,
                 latency_ms,
@@ -703,7 +703,7 @@ impl IceCoordinator {
         // Execute the new effects.
         for sub_effect in &effects {
             match sub_effect {
-                IceEffect::RecordScore {
+                VeilEffect::RecordScore {
                     method: sm,
                     outcome,
                     ..
@@ -740,7 +740,7 @@ impl IceCoordinator {
         reason: ProbeFailureReason,
         latency_ms: u32,
         fingerprint: &NetworkFingerprint,
-        state: &mut IceState,
+        state: &mut VeilState,
         scores_cache: &CachedScoreLookup,
     ) {
         info!(
@@ -756,7 +756,7 @@ impl IceCoordinator {
         let now_sys = SystemTime::now();
         let (new_state, effects) = reduce(
             state.clone(),
-            IceEvent::ProbeFailed { method, reason },
+            VeilEvent::ProbeFailed { method, reason },
             scores_cache,
             &self.config,
             now,
@@ -766,7 +766,7 @@ impl IceCoordinator {
 
         // Record score.
         for sub_effect in &effects {
-            if let IceEffect::RecordScore {
+            if let VeilEffect::RecordScore {
                 method: sm,
                 outcome,
                 ..
@@ -778,13 +778,13 @@ impl IceCoordinator {
     }
 
     /// Handle all probes failed: transition to Cooldown.
-    fn handle_all_probes_failed(&self, state: &mut IceState, scores_cache: &CachedScoreLookup) {
-        if matches!(state, IceState::Probing { .. }) {
+    fn handle_all_probes_failed(&self, state: &mut VeilState, scores_cache: &CachedScoreLookup) {
+        if matches!(state, VeilState::Probing { .. }) {
             let now = Instant::now();
             let now_sys = SystemTime::now();
             let (new_state, effects) = reduce(
                 state.clone(),
-                IceEvent::AllProbesFailed,
+                VeilEvent::AllProbesFailed,
                 scores_cache,
                 &self.config,
                 now,
@@ -792,7 +792,7 @@ impl IceCoordinator {
             );
             *state = new_state;
             for effect in &effects {
-                if let IceEffect::ScheduleCooldown { duration } = effect {
+                if let VeilEffect::ScheduleCooldown { duration } = effect {
                     info!(
                         target: "ice::fsm",
                         "cooldown  duration={:?}s reason=all_probes_failed",

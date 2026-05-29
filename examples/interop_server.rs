@@ -1,7 +1,7 @@
 //! Minimal obfs4 server for local interop testing.
 //! Usage: cargo run --example interop_server -- 0.0.0.0:54321
 
-use construct_ice::{Obfs4Listener, ServerConfig};
+use construct_veil::{Obfs4Listener, ServerConfig};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[tokio::main]

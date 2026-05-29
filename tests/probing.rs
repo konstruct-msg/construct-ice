@@ -19,7 +19,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use construct_ice::{
+use construct_veil::{
     ClientConfig, Obfs4Listener, Obfs4Stream, ServerConfig,
     transport::cover::{CoverDecision, CoverProxyConfig, classify_peeked_bytes},
 };
@@ -44,7 +44,7 @@ async fn spawn_server() -> (Obfs4Listener, String, String) {
     let addr = format!("127.0.0.1:{port}");
     // Short handshake_timeout so tests don't hang on failed/invalid handshakes.
     let config = ServerConfig::generate()
-        .with_iat(construct_ice::IatMode::None)
+        .with_iat(construct_veil::IatMode::None)
         .with_handshake_timeout(Duration::from_millis(400));
     let cert = config.bridge_cert();
     let listener = Obfs4Listener::bind(&addr, config).await.unwrap();
@@ -339,7 +339,7 @@ async fn zero_bytes_not_cover() {
 /// the connection to the cover upstream.
 #[tokio::test]
 async fn accept_obfs4_or_proxy_routes_http_to_upstream() {
-    use construct_ice::transport::cover::MixedAccept;
+    use construct_veil::transport::cover::MixedAccept;
 
     // Bind a trivial "cover" upstream — just accepts connections.
     let cover_port = free_port().await;

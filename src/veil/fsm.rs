@@ -146,7 +146,7 @@ pub struct ProbeAttempt {
 
 /// The current state of the ICE session FSM.
 #[derive(Debug, Clone)]
-pub enum IceState {
+pub enum VeilState {
     /// Not running. Waiting for a Start event.
     Idle,
 
@@ -180,7 +180,7 @@ pub enum IceState {
     Cooldown { until: Instant },
 }
 
-impl IceState {
+impl VeilState {
     /// Human-readable label.
     pub fn label(&self) -> &'static str {
         match self {
@@ -197,7 +197,7 @@ impl IceState {
 
 /// Events that drive the FSM transitions.
 #[derive(Debug, Clone)]
-pub enum IceEvent {
+pub enum VeilEvent {
     /// Caller requests ICE to start.
     Start {
         relay: String,
@@ -236,7 +236,7 @@ pub enum IceEvent {
 
 /// Effects emitted by the FSM. The caller / ProbeOrchestrator executes them.
 #[derive(Debug, Clone)]
-pub enum IceEffect {
+pub enum VeilEffect {
     /// Start parallel probes for the given methods.
     StartProbes {
         methods: Vec<MethodId>,
@@ -306,9 +306,9 @@ impl MethodSet {
 
 // ── Configuration ────────────────────────────────────────────────────────────
 
-/// Fully parameterizable ICE configuration.
+/// Fully parameterizable VEIL configuration.
 #[derive(Debug, Clone)]
-pub struct IceConfig {
+pub struct VeilConfig {
     /// How many obfuscators to probe in parallel.
     pub top_k_probes: usize,
     /// Delay between probe starts (happy-eyeballs stagger).
@@ -325,7 +325,7 @@ pub struct IceConfig {
     pub max_fingerprints: usize,
 }
 
-impl Default for IceConfig {
+impl Default for VeilConfig {
     fn default() -> Self {
         Self {
             top_k_probes: 2,
@@ -339,7 +339,7 @@ impl Default for IceConfig {
     }
 }
 
-impl IceConfig {
+impl VeilConfig {
     /// Config that probes sequentially (top_k=1) — legacy fallback behaviour.
     pub fn legacy() -> Self {
         Self {
@@ -383,7 +383,7 @@ pub fn select_probe_candidates(
     fingerprint: &NetworkFingerprint,
     allowed: MethodSet,
     scores: &dyn ScoreLookup,
-    cfg: &IceConfig,
+    cfg: &VeilConfig,
     now: SystemTime,
 ) -> Vec<MethodId> {
     let mut scored: Vec<(MethodId, f64)> = Vec::new();
@@ -514,18 +514,18 @@ fn compute_recent_failure_penalty(entry: &ScoreEntry, now: SystemTime) -> f64 {
 /// Pure function — no I/O, no side effects.
 #[allow(clippy::too_many_lines)]
 pub fn reduce(
-    state: IceState,
-    event: IceEvent,
+    state: VeilState,
+    event: VeilEvent,
     scores: &dyn ScoreLookup,
-    cfg: &IceConfig,
+    cfg: &VeilConfig,
     now: Instant,
     now_sys: SystemTime,
-) -> (IceState, Vec<IceEffect>) {
+) -> (VeilState, Vec<VeilEffect>) {
     match (&state, event) {
         // ── Idle ─────────────────────────────────────────────────────────
         (
-            IceState::Idle,
-            IceEvent::Start {
+            VeilState::Idle,
+            VeilEvent::Start {
                 relay,
                 bundle,
                 ref fingerprint,
@@ -540,13 +540,13 @@ pub fn reduce(
                 .map(|m| (*m, ProbeAttempt { started_at: now }))
                 .collect();
 
-            let new_state = IceState::Probing {
+            let new_state = VeilState::Probing {
                 candidates: candidates.clone(),
                 attempts,
                 started_at: now,
             };
 
-            let effects = vec![IceEffect::StartProbes {
+            let effects = vec![VeilEffect::StartProbes {
                 methods: candidates,
                 relay,
                 bundle,
@@ -555,21 +555,21 @@ pub fn reduce(
             (new_state, effects)
         }
 
-        (IceState::Idle, IceEvent::Stop) => (IceState::Idle, vec![]),
+        (VeilState::Idle, VeilEvent::Stop) => (VeilState::Idle, vec![]),
 
-        (IceState::Idle, _) => {
+        (VeilState::Idle, _) => {
             // Ignore all other events in Idle.
             (state, vec![])
         }
 
         // ── Probing ──────────────────────────────────────────────────────
         (
-            IceState::Probing {
+            VeilState::Probing {
                 candidates,
                 attempts: _,
                 started_at: _,
             },
-            IceEvent::ProbeSucceeded {
+            VeilEvent::ProbeSucceeded {
                 method,
                 port,
                 latency_ms,
@@ -580,20 +580,20 @@ pub fn reduce(
                 return (state, vec![]);
             }
 
-            let new_state = IceState::Active {
+            let new_state = VeilState::Active {
                 method,
                 port,
                 started_at: now,
                 consecutive_failures: 0,
             };
 
-            let mut effects = vec![IceEffect::CancelOtherProbes { winner: method }];
+            let mut effects = vec![VeilEffect::CancelOtherProbes { winner: method }];
 
             // We don't have the fingerprint here — the effect will be enriched
             // by the orchestrator who knows the current fingerprint.
             // The RecordScore effect is emitted without fingerprint info;
             // the caller fills it in.
-            effects.push(IceEffect::RecordScore {
+            effects.push(VeilEffect::RecordScore {
                 method,
                 fingerprint: NetworkFingerprint::default(), // placeholder — caller fills
                 outcome: ScoreOutcome::Success { latency_ms },
@@ -603,12 +603,12 @@ pub fn reduce(
         }
 
         (
-            IceState::Probing {
+            VeilState::Probing {
                 candidates,
                 attempts,
                 started_at,
             },
-            IceEvent::ProbeFailed { method, reason },
+            VeilEvent::ProbeFailed { method, reason },
         ) => {
             if !candidates.contains(&method) {
                 return (state, vec![]);
@@ -624,8 +624,8 @@ pub fn reduce(
             if new_candidates.is_empty() {
                 // All probes failed.
                 let until = now + cfg.cooldown_duration;
-                let new_state = IceState::Cooldown { until };
-                let effects = vec![IceEffect::ScheduleCooldown {
+                let new_state = VeilState::Cooldown { until };
+                let effects = vec![VeilEffect::ScheduleCooldown {
                     duration: cfg.cooldown_duration,
                 }];
                 return (new_state, effects);
@@ -635,13 +635,13 @@ pub fn reduce(
             let mut new_attempts = attempts.clone();
             new_attempts.remove(&method);
 
-            let new_state = IceState::Probing {
+            let new_state = VeilState::Probing {
                 candidates: new_candidates,
                 attempts: new_attempts,
                 started_at: *started_at,
             };
 
-            let effects = vec![IceEffect::RecordScore {
+            let effects = vec![VeilEffect::RecordScore {
                 method,
                 fingerprint: NetworkFingerprint::default(),
                 outcome: ScoreOutcome::Failure { reason },
@@ -651,47 +651,47 @@ pub fn reduce(
         }
 
         (
-            IceState::Probing {
+            VeilState::Probing {
                 candidates: _,
                 attempts: _,
                 started_at: _,
             },
-            IceEvent::AllProbesFailed,
+            VeilEvent::AllProbesFailed,
         ) => {
             let until = now + cfg.cooldown_duration;
-            let new_state = IceState::Cooldown { until };
-            let effects = vec![IceEffect::ScheduleCooldown {
+            let new_state = VeilState::Cooldown { until };
+            let effects = vec![VeilEffect::ScheduleCooldown {
                 duration: cfg.cooldown_duration,
             }];
 
             (new_state, effects)
         }
 
-        (IceState::Probing { .. }, IceEvent::Stop) => {
-            let effects = vec![IceEffect::StopActive];
-            (IceState::Idle, effects)
+        (VeilState::Probing { .. }, VeilEvent::Stop) => {
+            let effects = vec![VeilEffect::StopActive];
+            (VeilState::Idle, effects)
         }
 
-        (IceState::Probing { .. }, _) => {
+        (VeilState::Probing { .. }, _) => {
             // Ignore other events.
             (state, vec![])
         }
 
         // ── Active ───────────────────────────────────────────────────────
         (
-            IceState::Active {
+            VeilState::Active {
                 method,
                 port,
                 started_at,
                 consecutive_failures,
             },
-            IceEvent::TransportFailure { kind },
+            VeilEvent::TransportFailure { kind },
         ) => {
             match kind {
                 TransportFailureKind::FingerprintBlocked
                 | TransportFailureKind::WebTunnelDecoyResponse => {
                     // Immediate rotation.
-                    let new_state = IceState::Degraded {
+                    let new_state = VeilState::Degraded {
                         method: *method,
                         port: *port,
                         consecutive_failures: u8::MAX, // Force re-probe
@@ -706,7 +706,7 @@ pub fn reduce(
                     let new_fails = consecutive_failures.saturating_add(1);
                     if new_fails >= cfg.degraded_threshold {
                         (
-                            IceState::Degraded {
+                            VeilState::Degraded {
                                 method: *method,
                                 port: *port,
                                 consecutive_failures: new_fails,
@@ -715,7 +715,7 @@ pub fn reduce(
                         )
                     } else {
                         (
-                            IceState::Active {
+                            VeilState::Active {
                                 method: *method,
                                 port: *port,
                                 started_at: *started_at,
@@ -728,21 +728,21 @@ pub fn reduce(
             }
         }
 
-        (IceState::Active { .. }, IceEvent::Stop) => (IceState::Idle, vec![IceEffect::StopActive]),
+        (VeilState::Active { .. }, VeilEvent::Stop) => (VeilState::Idle, vec![VeilEffect::StopActive]),
 
-        (IceState::Active { .. }, _) => {
+        (VeilState::Active { .. }, _) => {
             // Ignore other events in Active.
             (state, vec![])
         }
 
         // ── Degraded ─────────────────────────────────────────────────────
         (
-            IceState::Degraded {
+            VeilState::Degraded {
                 method,
                 port,
                 consecutive_failures,
             },
-            IceEvent::TransportFailure { kind },
+            VeilEvent::TransportFailure { kind },
         ) => {
             match kind {
                 TransportFailureKind::TlsCertProblem => (state, vec![]),
@@ -750,11 +750,11 @@ pub fn reduce(
                     let new_fails = consecutive_failures.saturating_add(1);
                     if *consecutive_failures >= cfg.degraded_threshold {
                         // Threshold already reached — move to probing without current method.
-                        let effects = vec![IceEffect::StopActive];
-                        (IceState::Idle, effects)
+                        let effects = vec![VeilEffect::StopActive];
+                        (VeilState::Idle, effects)
                     } else {
                         (
-                            IceState::Degraded {
+                            VeilState::Degraded {
                                 method: *method,
                                 port: *port,
                                 consecutive_failures: new_fails,
@@ -766,25 +766,25 @@ pub fn reduce(
             }
         }
 
-        (IceState::Degraded { .. }, IceEvent::Stop) => {
-            (IceState::Idle, vec![IceEffect::StopActive])
+        (VeilState::Degraded { .. }, VeilEvent::Stop) => {
+            (VeilState::Idle, vec![VeilEffect::StopActive])
         }
 
-        (IceState::Degraded { .. }, _) => (state, vec![]),
+        (VeilState::Degraded { .. }, _) => (state, vec![]),
 
         // ── Cooldown ─────────────────────────────────────────────────────
-        (IceState::Cooldown { until }, IceEvent::CooldownElapsed) => {
+        (VeilState::Cooldown { until }, VeilEvent::CooldownElapsed) => {
             if now >= *until {
-                (IceState::Idle, vec![])
+                (VeilState::Idle, vec![])
             } else {
                 // Too early — stay in cooldown.
                 (state, vec![])
             }
         }
 
-        (IceState::Cooldown { .. }, IceEvent::Stop) => (IceState::Idle, vec![]),
+        (VeilState::Cooldown { .. }, VeilEvent::Stop) => (VeilState::Idle, vec![]),
 
-        (IceState::Cooldown { .. }, _) => {
+        (VeilState::Cooldown { .. }, _) => {
             // Ignore other events during cooldown.
             (state, vec![])
         }
@@ -824,23 +824,23 @@ mod tests {
 
     #[test]
     fn idle_start_goes_to_probing() {
-        let state = IceState::Idle;
+        let state = VeilState::Idle;
         let (new_state, effects) = reduce(
             state,
-            IceEvent::Start {
+            VeilEvent::Start {
                 relay: "relay:443".into(),
                 bundle: "cert=abc".into(),
                 fingerprint: NetworkFingerprint::default(),
                 allowed_methods: MethodSet::all(),
             },
             &NoScores,
-            &IceConfig::default(),
+            &VeilConfig::default(),
             now(),
             now_sys(),
         );
 
         match new_state {
-            IceState::Probing { ref candidates, .. } => {
+            VeilState::Probing { ref candidates, .. } => {
                 assert_eq!(candidates.len(), 2); // top_k=2 by default
             }
             _ => panic!("expected Probing, got {:?}", new_state),
@@ -848,7 +848,7 @@ mod tests {
 
         assert_eq!(effects.len(), 1);
         match &effects[0] {
-            IceEffect::StartProbes {
+            VeilEffect::StartProbes {
                 methods,
                 relay,
                 bundle,
@@ -864,14 +864,14 @@ mod tests {
     #[test]
     fn idle_stop_stays_idle() {
         let (new_state, effects) = reduce(
-            IceState::Idle,
-            IceEvent::Stop,
+            VeilState::Idle,
+            VeilEvent::Stop,
             &NoScores,
-            &IceConfig::default(),
+            &VeilConfig::default(),
             now(),
             now_sys(),
         );
-        assert!(matches!(new_state, IceState::Idle));
+        assert!(matches!(new_state, VeilState::Idle));
         assert!(effects.is_empty());
     }
 
@@ -884,7 +884,7 @@ mod tests {
             .iter()
             .map(|m| (*m, ProbeAttempt { started_at: now() }))
             .collect();
-        let state = IceState::Probing {
+        let state = VeilState::Probing {
             candidates,
             attempts,
             started_at: now(),
@@ -892,19 +892,19 @@ mod tests {
 
         let (new_state, effects) = reduce(
             state,
-            IceEvent::ProbeSucceeded {
+            VeilEvent::ProbeSucceeded {
                 method: MethodId::Obfs4,
                 port: 12345,
                 latency_ms: 500,
             },
             &NoScores,
-            &IceConfig::default(),
+            &VeilConfig::default(),
             now(),
             now_sys(),
         );
 
         match new_state {
-            IceState::Active { method, port, .. } => {
+            VeilState::Active { method, port, .. } => {
                 assert_eq!(method, MethodId::Obfs4);
                 assert_eq!(port, 12345);
             }
@@ -914,7 +914,7 @@ mod tests {
         // Should emit CancelOtherProbes + RecordScore
         assert_eq!(effects.len(), 2);
         assert!(
-            matches!(&effects[0], IceEffect::CancelOtherProbes { winner } if *winner == MethodId::Obfs4)
+            matches!(&effects[0], VeilEffect::CancelOtherProbes { winner } if *winner == MethodId::Obfs4)
         );
     }
 
@@ -925,7 +925,7 @@ mod tests {
             .iter()
             .map(|m| (*m, ProbeAttempt { started_at: now() }))
             .collect();
-        let state = IceState::Probing {
+        let state = VeilState::Probing {
             candidates: candidates.clone(),
             attempts,
             started_at: now(),
@@ -933,18 +933,18 @@ mod tests {
 
         let (new_state, _) = reduce(
             state,
-            IceEvent::ProbeFailed {
+            VeilEvent::ProbeFailed {
                 method: MethodId::WebTunnel,
                 reason: ProbeFailureReason::FingerprintBlocked,
             },
             &NoScores,
-            &IceConfig::default(),
+            &VeilConfig::default(),
             now(),
             now_sys(),
         );
 
         match new_state {
-            IceState::Probing { ref candidates, .. } => {
+            VeilState::Probing { ref candidates, .. } => {
                 assert_eq!(candidates.len(), 1);
                 assert_eq!(candidates[0], MethodId::Obfs4);
             }
@@ -959,7 +959,7 @@ mod tests {
             .iter()
             .map(|m| (*m, ProbeAttempt { started_at: now() }))
             .collect();
-        let state = IceState::Probing {
+        let state = VeilState::Probing {
             candidates,
             attempts,
             started_at: now(),
@@ -967,21 +967,21 @@ mod tests {
 
         let (new_state, effects) = reduce(
             state,
-            IceEvent::ProbeFailed {
+            VeilEvent::ProbeFailed {
                 method: MethodId::Obfs4,
                 reason: ProbeFailureReason::ConnectionFailed,
             },
             &NoScores,
-            &IceConfig::default(),
+            &VeilConfig::default(),
             now(),
             now_sys(),
         );
 
-        assert!(matches!(new_state, IceState::Cooldown { .. }));
+        assert!(matches!(new_state, VeilState::Cooldown { .. }));
         assert!(
             effects
                 .iter()
-                .any(|e| matches!(e, IceEffect::ScheduleCooldown { .. }))
+                .any(|e| matches!(e, VeilEffect::ScheduleCooldown { .. }))
         );
     }
 
@@ -992,7 +992,7 @@ mod tests {
             .iter()
             .map(|m| (*m, ProbeAttempt { started_at: now() }))
             .collect();
-        let state = IceState::Probing {
+        let state = VeilState::Probing {
             candidates,
             attempts,
             started_at: now(),
@@ -1000,18 +1000,18 @@ mod tests {
 
         let (new_state, effects) = reduce(
             state,
-            IceEvent::AllProbesFailed,
+            VeilEvent::AllProbesFailed,
             &NoScores,
-            &IceConfig::default(),
+            &VeilConfig::default(),
             now(),
             now_sys(),
         );
 
-        assert!(matches!(new_state, IceState::Cooldown { .. }));
+        assert!(matches!(new_state, VeilState::Cooldown { .. }));
         assert!(
             effects
                 .iter()
-                .any(|e| matches!(e, IceEffect::ScheduleCooldown { .. }))
+                .any(|e| matches!(e, VeilEffect::ScheduleCooldown { .. }))
         );
     }
 
@@ -1022,7 +1022,7 @@ mod tests {
             .iter()
             .map(|m| (*m, ProbeAttempt { started_at: now() }))
             .collect();
-        let state = IceState::Probing {
+        let state = VeilState::Probing {
             candidates,
             attempts,
             started_at: now(),
@@ -1030,21 +1030,21 @@ mod tests {
 
         let (new_state, effects) = reduce(
             state,
-            IceEvent::Stop,
+            VeilEvent::Stop,
             &NoScores,
-            &IceConfig::default(),
+            &VeilConfig::default(),
             now(),
             now_sys(),
         );
-        assert!(matches!(new_state, IceState::Idle));
-        assert!(effects.iter().any(|e| matches!(e, IceEffect::StopActive)));
+        assert!(matches!(new_state, VeilState::Idle));
+        assert!(effects.iter().any(|e| matches!(e, VeilEffect::StopActive)));
     }
 
     // ── Active transitions ────────────────────────────────────────────────
 
     #[test]
     fn active_stream_timeout_increments_failures() {
-        let state = IceState::Active {
+        let state = VeilState::Active {
             method: MethodId::Obfs4,
             port: 12345,
             started_at: now(),
@@ -1053,17 +1053,17 @@ mod tests {
 
         let (new_state, _) = reduce(
             state.clone(),
-            IceEvent::TransportFailure {
+            VeilEvent::TransportFailure {
                 kind: TransportFailureKind::StreamTimeout,
             },
             &NoScores,
-            &IceConfig::default(),
+            &VeilConfig::default(),
             now(),
             now_sys(),
         );
 
         match new_state {
-            IceState::Active {
+            VeilState::Active {
                 consecutive_failures,
                 ..
             } => {
@@ -1075,7 +1075,7 @@ mod tests {
 
     #[test]
     fn active_fingerprint_blocked_immediate_rotation() {
-        let state = IceState::Active {
+        let state = VeilState::Active {
             method: MethodId::Obfs4,
             port: 12345,
             started_at: now(),
@@ -1084,18 +1084,18 @@ mod tests {
 
         let (new_state, _) = reduce(
             state,
-            IceEvent::TransportFailure {
+            VeilEvent::TransportFailure {
                 kind: TransportFailureKind::FingerprintBlocked,
             },
             &NoScores,
-            &IceConfig::default(),
+            &VeilConfig::default(),
             now(),
             now_sys(),
         );
 
         assert!(matches!(
             new_state,
-            IceState::Degraded {
+            VeilState::Degraded {
                 consecutive_failures: u8::MAX,
                 ..
             }
@@ -1104,7 +1104,7 @@ mod tests {
 
     #[test]
     fn active_tls_cert_problem_no_state_change() {
-        let state = IceState::Active {
+        let state = VeilState::Active {
             method: MethodId::Obfs4,
             port: 12345,
             started_at: now(),
@@ -1113,26 +1113,26 @@ mod tests {
 
         let (new_state, effects) = reduce(
             state.clone(),
-            IceEvent::TransportFailure {
+            VeilEvent::TransportFailure {
                 kind: TransportFailureKind::TlsCertProblem,
             },
             &NoScores,
-            &IceConfig::default(),
+            &VeilConfig::default(),
             now(),
             now_sys(),
         );
 
-        assert!(matches!(new_state, IceState::Active { .. }));
+        assert!(matches!(new_state, VeilState::Active { .. }));
         assert!(effects.is_empty());
     }
 
     #[test]
     fn active_degraded_threshold_reached() {
-        let cfg = IceConfig {
+        let cfg = VeilConfig {
             degraded_threshold: 2,
-            ..IceConfig::default()
+            ..VeilConfig::default()
         };
-        let state = IceState::Active {
+        let state = VeilState::Active {
             method: MethodId::Obfs4,
             port: 12345,
             started_at: now(),
@@ -1141,7 +1141,7 @@ mod tests {
 
         let (new_state, _) = reduce(
             state,
-            IceEvent::TransportFailure {
+            VeilEvent::TransportFailure {
                 kind: TransportFailureKind::StreamTimeout,
             },
             &NoScores,
@@ -1150,12 +1150,12 @@ mod tests {
             now_sys(),
         );
 
-        assert!(matches!(new_state, IceState::Degraded { .. }));
+        assert!(matches!(new_state, VeilState::Degraded { .. }));
     }
 
     #[test]
     fn active_stop_goes_to_idle() {
-        let state = IceState::Active {
+        let state = VeilState::Active {
             method: MethodId::Obfs4,
             port: 12345,
             started_at: now(),
@@ -1164,21 +1164,21 @@ mod tests {
 
         let (new_state, effects) = reduce(
             state,
-            IceEvent::Stop,
+            VeilEvent::Stop,
             &NoScores,
-            &IceConfig::default(),
+            &VeilConfig::default(),
             now(),
             now_sys(),
         );
-        assert!(matches!(new_state, IceState::Idle));
-        assert!(effects.iter().any(|e| matches!(e, IceEffect::StopActive)));
+        assert!(matches!(new_state, VeilState::Idle));
+        assert!(effects.iter().any(|e| matches!(e, VeilEffect::StopActive)));
     }
 
     // ── Degraded transitions ──────────────────────────────────────────────
 
     #[test]
     fn degraded_more_failures_idle() {
-        let state = IceState::Degraded {
+        let state = VeilState::Degraded {
             method: MethodId::Obfs4,
             port: 12345,
             consecutive_failures: 2,
@@ -1186,18 +1186,18 @@ mod tests {
 
         let (new_state, effects) = reduce(
             state,
-            IceEvent::TransportFailure {
+            VeilEvent::TransportFailure {
                 kind: TransportFailureKind::StreamTimeout,
             },
             &NoScores,
-            &IceConfig::default(),
+            &VeilConfig::default(),
             now(),
             now_sys(),
         );
 
         // Threshold reached (2 >= 2) → goes to Idle with StopActive.
-        assert!(matches!(new_state, IceState::Idle));
-        assert!(effects.iter().any(|e| matches!(e, IceEffect::StopActive)));
+        assert!(matches!(new_state, VeilState::Idle));
+        assert!(effects.iter().any(|e| matches!(e, VeilEffect::StopActive)));
     }
 
     // ── Cooldown transitions ──────────────────────────────────────────────
@@ -1205,51 +1205,51 @@ mod tests {
     #[test]
     fn cooldown_elapsed_goes_to_idle() {
         let until = now() - Duration::from_secs(1); // already elapsed
-        let state = IceState::Cooldown { until };
+        let state = VeilState::Cooldown { until };
 
         let (new_state, _) = reduce(
             state,
-            IceEvent::CooldownElapsed,
+            VeilEvent::CooldownElapsed,
             &NoScores,
-            &IceConfig::default(),
+            &VeilConfig::default(),
             now(),
             now_sys(),
         );
 
-        assert!(matches!(new_state, IceState::Idle));
+        assert!(matches!(new_state, VeilState::Idle));
     }
 
     #[test]
     fn cooldown_not_yet_elapsed_stays_cooldown() {
         let until = now() + Duration::from_secs(30);
-        let state = IceState::Cooldown { until };
+        let state = VeilState::Cooldown { until };
 
         let (new_state, _) = reduce(
             state.clone(),
-            IceEvent::CooldownElapsed,
+            VeilEvent::CooldownElapsed,
             &NoScores,
-            &IceConfig::default(),
+            &VeilConfig::default(),
             now(),
             now_sys(),
         );
 
-        assert!(matches!(new_state, IceState::Cooldown { .. }));
+        assert!(matches!(new_state, VeilState::Cooldown { .. }));
     }
 
     #[test]
     fn cooldown_stop_goes_to_idle() {
         let until = now() + Duration::from_secs(30);
-        let state = IceState::Cooldown { until };
+        let state = VeilState::Cooldown { until };
 
         let (new_state, _) = reduce(
             state,
-            IceEvent::Stop,
+            VeilEvent::Stop,
             &NoScores,
-            &IceConfig::default(),
+            &VeilConfig::default(),
             now(),
             now_sys(),
         );
-        assert!(matches!(new_state, IceState::Idle));
+        assert!(matches!(new_state, VeilState::Idle));
     }
 
     // ── Candidate selection ───────────────────────────────────────────────
@@ -1292,9 +1292,9 @@ mod tests {
             }
         }
 
-        let cfg = IceConfig {
+        let cfg = VeilConfig {
             top_k_probes: 2,
-            ..IceConfig::default()
+            ..VeilConfig::default()
         };
         let candidates = select_probe_candidates(
             &NetworkFingerprint::default(),
@@ -1338,9 +1338,9 @@ mod tests {
             }
         }
 
-        let cfg = IceConfig {
+        let cfg = VeilConfig {
             top_k_probes: 2,
-            ..IceConfig::default()
+            ..VeilConfig::default()
         };
         let candidates = select_probe_candidates(
             &NetworkFingerprint::default(),
@@ -1383,9 +1383,9 @@ mod tests {
             }
         }
 
-        let cfg = IceConfig {
+        let cfg = VeilConfig {
             top_k_probes: 2,
-            ..IceConfig::default()
+            ..VeilConfig::default()
         };
         let candidates = select_probe_candidates(
             &NetworkFingerprint::default(),
@@ -1403,7 +1403,7 @@ mod tests {
 
     #[test]
     fn legacy_config_selects_one_candidate() {
-        let cfg = IceConfig::legacy();
+        let cfg = VeilConfig::legacy();
         let candidates = select_probe_candidates(
             &NetworkFingerprint::default(),
             MethodSet::all(),

@@ -8,7 +8,7 @@
 use std::time::{Duration, Instant};
 
 use bytes::BytesMut;
-use construct_ice::{
+use construct_veil::{
     ClientConfig, IatMode, Obfs4Listener, Obfs4Stream, PaddingStrategy, ServerConfig,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -28,8 +28,8 @@ async fn free_port() -> u16 {
 
 mod framing {
     use super::*;
-    use construct_ice::framing::decoder::{DecodedFrame, FrameDecoder};
-    use construct_ice::framing::encoder::FrameEncoder;
+    use construct_veil::framing::decoder::{DecodedFrame, FrameDecoder};
+    use construct_veil::framing::encoder::FrameEncoder;
 
     fn test_keys() -> ([u8; 32], [u8; 16], [u8; 16], [u8; 8]) {
         (
@@ -190,7 +190,7 @@ mod framing {
 // ─────────────────────────────────────────────────────────────────────────────
 
 mod iat {
-    use construct_ice::iat::{MAX_IAT_DELAY, sample_delay_with_max};
+    use construct_veil::iat::{MAX_IAT_DELAY, sample_delay_with_max};
     use rand::SeedableRng;
     use rand::rngs::SmallRng;
     use std::time::Duration;

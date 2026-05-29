@@ -1,6 +1,6 @@
 //! Example: gRPC over obfs4 using `Obfs4Channel` + tonic.
 //!
-//! This demonstrates how to route tonic gRPC traffic through construct-ice,
+//! This demonstrates how to route tonic gRPC traffic through construct-veil,
 //! making the connection look like random noise to DPI systems.
 //!
 //! ## Requirements
@@ -19,7 +19,7 @@
 //!
 //! ## Running
 //!
-//! 1. Start an obfs4 server (e.g. using construct-ice's `Obfs4Listener`):
+//! 1. Start an obfs4 server (e.g. using construct-veil's `Obfs4Listener`):
 //!    ```sh
 //!    cargo run --example interop_server --features tonic-transport
 //!    ```
@@ -52,7 +52,7 @@ fn main() {
     //
     // Typical usage in your application:
     //
-    //   use construct_ice::{ClientConfig, transport::tonic_compat::Obfs4Channel};
+    //   use construct_veil::{ClientConfig, transport::tonic_compat::Obfs4Channel};
     //   use tonic::transport::Endpoint;
     //
     //   let config = ClientConfig::from_bridge_cert(&bridge_cert)?;
@@ -65,7 +65,7 @@ fn main() {
     // The Obfs4Channel is Clone — you can share it across tasks or wrap it in
     // tonic's load-balancing primitives.
 
-    println!("construct-ice gRPC/tonic integration example.");
+    println!("construct-veil gRPC/tonic integration example.");
     println!();
     println!("Usage pattern:");
     println!();

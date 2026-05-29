@@ -8,7 +8,7 @@
 //! который можно сразу передать в любой tonic-клиент:
 //!
 //! ```rust,no_run
-//! use construct_ice::{ClientConfig, transport::tonic_compat::Obfs4Channel};
+//! use construct_veil::{ClientConfig, transport::tonic_compat::Obfs4Channel};
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -22,7 +22,7 @@
 //! ## Расширенная настройка Endpoint
 //!
 //! ```rust,no_run
-//! use construct_ice::{ClientConfig, transport::tonic_compat::Obfs4Channel};
+//! use construct_veil::{ClientConfig, transport::tonic_compat::Obfs4Channel};
 //! use tonic::transport::Endpoint;
 //! use std::time::Duration;
 //!
@@ -143,7 +143,7 @@ impl Write for HyperObfs4Io {
 /// # Простой путь
 ///
 /// ```rust,no_run
-/// use construct_ice::{ClientConfig, transport::tonic_compat::Obfs4Channel};
+/// use construct_veil::{ClientConfig, transport::tonic_compat::Obfs4Channel};
 ///
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -157,7 +157,7 @@ impl Write for HyperObfs4Io {
 /// # С настройкой Endpoint
 ///
 /// ```rust,no_run
-/// use construct_ice::{ClientConfig, transport::tonic_compat::Obfs4Channel};
+/// use construct_veil::{ClientConfig, transport::tonic_compat::Obfs4Channel};
 /// use tonic::transport::Endpoint;
 /// use std::time::Duration;
 ///
@@ -187,7 +187,7 @@ impl Obfs4Channel {
     /// Самый удобный способ — не требует ручной работы с `Endpoint`.
     ///
     /// ```rust,no_run
-    /// use construct_ice::{ClientConfig, transport::tonic_compat::Obfs4Channel};
+    /// use construct_veil::{ClientConfig, transport::tonic_compat::Obfs4Channel};
     ///
     /// # #[tokio::main]
     /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {

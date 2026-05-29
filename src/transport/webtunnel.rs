@@ -410,7 +410,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> AsyncWrite for WebTunnelStream<S> {
 ///
 /// # Usage (relay)
 /// ```ignore
-/// let ws = WebTunnelServerStream::accept(tls_stream, "/construct-ice").await?;
+/// let ws = WebTunnelServerStream::accept(tls_stream, "/construct-veil").await?;
 /// tokio::io::copy_bidirectional(&mut ws, &mut upstream).await?;
 /// ```
 #[cfg(feature = "server")]
