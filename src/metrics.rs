@@ -7,10 +7,10 @@
 //!
 //! | Metric | Type | Description |
 //! |--------|------|-------------|
-//! | `ice_connections_active` | Gauge | Currently open obfs4/WebTunnel connections |
-//! | `ice_handshakes_total` | Counter | Completed handshakes (`result=ok\|fail`) |
-//! | `ice_bytes_total` | Counter | Bytes relayed (`direction=in\|out`) |
-//! | `ice_iat_mode` | Gauge | Configured IAT mode (0=None, 1=Enabled, 2=Paranoid) |
+//! | `veil_connections_active` | Gauge | Currently open obfs4/WebTunnel connections |
+//! | `veil_handshakes_total` | Counter | Completed handshakes (`result=ok\|fail`) |
+//! | `veil_bytes_total` | Counter | Bytes relayed (`direction=in\|out`) |
+//! | `veil_iat_mode` | Gauge | Configured IAT mode (0=None, 1=Enabled, 2=Paranoid) |
 //!
 //! ## HTTP endpoint
 //!
@@ -31,7 +31,7 @@ use std::net::SocketAddr;
 /// Current number of open obfs4/WebTunnel connections.
 pub static ICE_CONNECTIONS_ACTIVE: Lazy<IntGauge> = Lazy::new(|| {
     register_int_gauge!(
-        "ice_connections_active",
+        "veil_connections_active",
         "Current number of active obfs4/WebTunnel relay connections"
     )
     .expect("Failed to register ICE_CONNECTIONS_ACTIVE")
@@ -42,7 +42,7 @@ pub static ICE_CONNECTIONS_ACTIVE: Lazy<IntGauge> = Lazy::new(|| {
 pub static ICE_HANDSHAKES_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
     register_int_counter_vec!(
         opts!(
-            "ice_handshakes_total",
+            "veil_handshakes_total",
             "Total obfs4/WebTunnel handshakes completed"
         ),
         &["result"]
@@ -55,7 +55,7 @@ pub static ICE_HANDSHAKES_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
 pub static ICE_BYTES_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
     register_int_counter_vec!(
         opts!(
-            "ice_bytes_total",
+            "veil_bytes_total",
             "Total bytes relayed by construct-veil (in = from client, out = to client)"
         ),
         &["direction"]
@@ -67,7 +67,7 @@ pub static ICE_BYTES_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
 /// 0 = None (no jitter), 1 = Enabled (10 ms), 2 = Paranoid (random chunk + 10 ms).
 pub static ICE_IAT_MODE: Lazy<IntGauge> = Lazy::new(|| {
     register_int_gauge!(
-        "ice_iat_mode",
+        "veil_iat_mode",
         "Configured IAT mode: 0=None, 1=Enabled, 2=Paranoid"
     )
     .expect("Failed to register ICE_IAT_MODE")
@@ -76,7 +76,7 @@ pub static ICE_IAT_MODE: Lazy<IntGauge> = Lazy::new(|| {
 /// Total replay-filter rejections (duplicate/replayed client handshakes).
 pub static ICE_REPLAY_REJECTIONS_TOTAL: Lazy<IntCounter> = Lazy::new(|| {
     register_int_counter!(opts!(
-        "ice_replay_rejections_total",
+        "veil_replay_rejections_total",
         "Total client handshakes rejected by the replay filter"
     ))
     .expect("Failed to register ICE_REPLAY_REJECTIONS_TOTAL")
@@ -86,7 +86,7 @@ pub static ICE_REPLAY_REJECTIONS_TOTAL: Lazy<IntCounter> = Lazy::new(|| {
 /// A sustained increase indicates a flood/DoS attempt on the handshake endpoint.
 pub static ICE_REPLAY_EVICTIONS_TOTAL: Lazy<IntCounter> = Lazy::new(|| {
     register_int_counter!(opts!(
-        "ice_replay_evictions_total",
+        "veil_replay_evictions_total",
         "Total replay filter evictions (bucket overflow — possible DoS indicator)"
     ))
     .expect("Failed to register ICE_REPLAY_EVICTIONS_TOTAL")

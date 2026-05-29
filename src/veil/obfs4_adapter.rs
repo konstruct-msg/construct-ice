@@ -5,8 +5,8 @@ use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio_util::sync::CancellationToken;
 
-use crate::ice::fsm::MethodId;
-use crate::ice::obfuscator::{ObfuscatorError, ObfuscatorHandle, ProbeRequest};
+use crate::veil::fsm::MethodId;
+use crate::veil::obfuscator::{ObfuscatorError, ObfuscatorHandle, ProbeRequest};
 
 /// Obfs4 probe adapter.
 pub struct Obfs4Obfuscator;
@@ -25,7 +25,7 @@ impl Default for Obfs4Obfuscator {
 }
 
 #[async_trait::async_trait]
-impl crate::ice::obfuscator::Obfuscator for Obfs4Obfuscator {
+impl crate::veil::obfuscator::Obfuscator for Obfs4Obfuscator {
     fn method_id(&self) -> MethodId {
         MethodId::Obfs4
     }

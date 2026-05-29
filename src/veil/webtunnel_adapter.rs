@@ -5,8 +5,8 @@ use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio_util::sync::CancellationToken;
 
-use crate::ice::fsm::MethodId;
-use crate::ice::obfuscator::{ObfuscatorError, ObfuscatorHandle, ProbeRequest};
+use crate::veil::fsm::MethodId;
+use crate::veil::obfuscator::{ObfuscatorError, ObfuscatorHandle, ProbeRequest};
 
 /// WebTunnel probe adapter.
 pub struct WebTunnelObfuscator;
@@ -25,7 +25,7 @@ impl Default for WebTunnelObfuscator {
 }
 
 #[async_trait::async_trait]
-impl crate::ice::obfuscator::Obfuscator for WebTunnelObfuscator {
+impl crate::veil::obfuscator::Obfuscator for WebTunnelObfuscator {
     fn method_id(&self) -> MethodId {
         MethodId::WebTunnel
     }

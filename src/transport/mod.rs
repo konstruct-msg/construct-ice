@@ -416,7 +416,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Obfs4Stream<S> {
     /// Use this when obfs4 runs inside another transport layer, e.g. TLS:
     /// ```rust,ignore
     /// let tls_stream = tls_connector.connect(domain, tcp).await?;
-    /// let ice_stream = Obfs4Stream::client_handshake_stream(tls_stream, config).await?;
+    /// let veil_stream = Obfs4Stream::client_handshake_stream(tls_stream, config).await?;
     /// ```
     pub async fn client_handshake_stream(stream: S, config: ClientConfig) -> Result<Self> {
         let iat_mode = config.iat_mode;
@@ -775,7 +775,7 @@ impl Obfs4Listener {
     /// e.g. TLS terminated by the gateway before obfs4:
     /// ```rust,ignore
     /// let (tls_stream, _addr) = tls_acceptor.accept(tcp).await?;
-    /// let ice_stream = listener.accept_stream(tls_stream).await?;
+    /// let veil_stream = listener.accept_stream(tls_stream).await?;
     /// ```
     pub async fn accept_stream<S: AsyncRead + AsyncWrite + Unpin>(
         &self,
@@ -795,7 +795,7 @@ impl Obfs4Listener {
         .map_err(|_| crate::Error::HandshakeTimeout)??;
         let keys = result.session_keys;
 
-        let mut ice_stream = Obfs4Stream {
+        let mut veil_stream = Obfs4Stream {
             inner: stream,
             encoder: FrameEncoder::new(
                 &keys.s2c_key,
@@ -825,22 +825,22 @@ impl Obfs4Listener {
         let mut seed = [0u8; 24];
         rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut seed);
         let mut seed_frame = BytesMut::new();
-        ice_stream
+        veil_stream
             .encoder
             .encode_prng_seed(&seed, &mut seed_frame)?;
         {
             use std::pin::Pin;
             use tokio::io::AsyncWriteExt;
-            Pin::new(&mut ice_stream.inner)
+            Pin::new(&mut veil_stream.inner)
                 .write_all(&seed_frame)
                 .await?;
-            Pin::new(&mut ice_stream.inner).flush().await?;
+            Pin::new(&mut veil_stream.inner).flush().await?;
         }
         // Re-key both IAT RNG and length obfuscator to match what the client will do
         // after decoding the PrngSeed frame.
-        ice_stream.iat_rng = SmallRng::from_seed(prng_seed_to_rng_seed(&seed));
-        ice_stream.encoder.reseed_length_obf(&seed);
+        veil_stream.iat_rng = SmallRng::from_seed(prng_seed_to_rng_seed(&seed));
+        veil_stream.encoder.reseed_length_obf(&seed);
 
-        Ok(ice_stream)
+        Ok(veil_stream)
     }
 }

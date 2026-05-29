@@ -29,7 +29,7 @@ use std::{
 
 use sqlx::{Row, SqlitePool};
 
-use crate::ice::fsm::{MethodId, NetworkFingerprint, ScoreEntry, ScoreLookup, ScoreOutcome};
+use crate::veil::fsm::{MethodId, NetworkFingerprint, ScoreEntry, ScoreLookup, ScoreOutcome};
 
 /// SQLite-backed persistent scores store.
 pub struct PersistentScores {
@@ -157,8 +157,8 @@ impl PersistentScores {
 
                 let is_hard_block = matches!(
                     reason,
-                    crate::ice::fsm::ProbeFailureReason::FingerprintBlocked
-                        | crate::ice::fsm::ProbeFailureReason::WebTunnelDecoyResponse
+                    crate::veil::fsm::ProbeFailureReason::FingerprintBlocked
+                        | crate::veil::fsm::ProbeFailureReason::WebTunnelDecoyResponse
                 );
 
                 if is_hard_block {
